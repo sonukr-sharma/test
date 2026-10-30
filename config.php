@@ -75,6 +75,38 @@ function env(string $key, ?string $default = null): ?string
     return $fileVars[$key] ?? $default;
 }
 
+/**
+ * Detect the current request's scheme + host, honouring reverse proxies.
+ *
+ * Shared hosts (cPanel, Cloudflare, Render, Railway, nginx→PHP-FPM) terminate
+ * TLS at the edge, so $_SERVER['HTTPS'] is empty even though the visitor is on
+ * https. Without this, every generated link would silently downgrade to http.
+ */
+function detect_request_origin(): string
+{
+    $host = (string) ($_SERVER['HTTP_HOST'] ?? '');
+
+    // Prefer the proxy's forwarded host when the direct host is missing.
+    if ($host === '' && !empty($_SERVER['HTTP_X_FORWARDED_HOST'])) {
+        $host = trim(explode(',', (string) $_SERVER['HTTP_X_FORWARDED_HOST'])[0]);
+    }
+
+    if ($host === '') {
+        $host = 'localhost';
+    }
+
+    // Strip anything that is not a valid host[:port] to avoid header injection.
+    $host = preg_replace('/[^A-Za-z0-9.\-:\[\]]/', '', $host) ?: 'localhost';
+
+    $https = (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off')
+        || (int) ($_SERVER['SERVER_PORT'] ?? 0) === 443
+        || strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https'
+        || strtolower((string) ($_SERVER['HTTP_X_FORWARDED_SSL'] ?? '')) === 'on'
+        || strtolower((string) ($_SERVER['REQUEST_SCHEME'] ?? '')) === 'https';
+
+    return ($https ? 'https://' : 'http://') . $host;
+}
+
 $host    = $_SERVER['HTTP_HOST'] ?? '';
 $isLocal = $host === ''
     || preg_match('/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i', $host) === 1;
@@ -91,15 +123,26 @@ define('APP_ENV', $isLocal ? 'local' : 'production');
 define('APP_DEBUG', filter_var(env('APP_DEBUG', $isLocal ? '1' : '0'), FILTER_VALIDATE_BOOLEAN));
 define('APP_TIMEZONE', env('APP_TIMEZONE', 'Asia/Kolkata') ?? 'Asia/Kolkata');
 
-// Absolute base URL, no trailing slash. Set APP_URL in production so links and
-// the Telegram webhook URL are correct behind a proxy or subdirectory.
+// Absolute base URL, no trailing slash.
+//
+// Resolution order:
+//   1. APP_URL from .env / real env  — explicit override, wins everywhere.
+//   2. The current request's origin  — so the app follows whatever domain it is
+//      served from (localhost, a staging host, the live domain) with no edits.
+//
+// This means you never have to hardcode a domain: deploy to a new host and all
+// links, the webhook URL and the Telegram WebApp button follow automatically.
 $configuredUrl = rtrim((string) env('APP_URL', ''), '/');
 
-define('APP_URL', $configuredUrl !== ''
-    ? $configuredUrl
-    : ($isLocal
-        ? 'http://' . ($host !== '' ? $host : 'localhost')
-        : 'https://' . $host));
+define('APP_URL', $configuredUrl !== '' ? $configuredUrl : detect_request_origin());
+
+// Bare host[:port] of the current request, e.g. "referearn.com".
+define('APP_HOST', (string) (parse_url(APP_URL, PHP_URL_HOST) ?? 'localhost'));
+
+// True when APP_URL is a real public address Telegram can reach.
+define('APP_URL_IS_PUBLIC', !$isLocal
+    && preg_match('/^https:\/\//i', APP_URL) === 1
+    && !preg_match('/^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)$/i', APP_HOST));
 
 /* ---------------------------------------------------------------------
  |  2. Database
@@ -247,7 +290,8 @@ function default_settings(): array
         'min_withdrawal_t'             => 2000.0,
         'max_withdrawal_t'             => 50000.0,
         'auto_approve_withdrawals'     => false,
-        'withdrawal_api_url'           => 'https://yourdomain.com/api/withdraw',
+        // Optional external payout hook; blank means "not configured".
+        'withdrawal_api_url'           => '',
         'coin_to_inr_rate'             => 0.10,
         'withdrawal_processing_hours'  => 24,
 
@@ -329,6 +373,44 @@ function setting(string $key, mixed $default = null): mixed
     $all = settings();
 
     return array_key_exists($key, $all) ? $all[$key] : $default;
+}
+
+/**
+ * The URL Telegram should open for this WebApp.
+ *
+ * A stored value is only honoured when it points at the domain the app is
+ * currently served from. Anything else (a stale localhost URL left over from
+ * development, or a placeholder) is ignored so the button always follows the
+ * live domain instead of sending users to a dead host.
+ */
+function web_app_url(): string
+{
+    $stored = trim((string) setting('bot_web_app_url', ''));
+
+    if ($stored !== '' && preg_match('#^https?://#i', $stored) === 1) {
+        $storedHost = strtolower((string) (parse_url($stored, PHP_URL_HOST) ?? ''));
+
+        if ($storedHost !== '' && $storedHost === strtolower(APP_HOST)) {
+            return $stored;
+        }
+    }
+
+    return APP_URL . '/index.php';
+}
+
+/**
+ * The endpoint withdrawals are forwarded to, or '' when not configured.
+ *
+ * This is an *external* integration hook: nothing in this app calls it, so a
+ * blank value simply means "no payout service wired up yet". It is never
+ * derived from the current domain, because pointing it at this site would
+ * imply an endpoint that does not exist.
+ */
+function withdrawal_api_url(): string
+{
+    $stored = trim((string) setting('withdrawal_api_url', ''));
+
+    return preg_match('#^https?://#i', $stored) === 1 ? $stored : '';
 }
 
 /* ---------------------------------------------------------------------

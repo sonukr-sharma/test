@@ -145,15 +145,9 @@ function webhook_upsert_user(array $from): ?array
  */
 function webhook_webapp_keyboard(): array
 {
-    $webAppUrl = trim((string) setting('bot_web_app_url', ''));
-
-    if ($webAppUrl === '') {
-        $webAppUrl = APP_URL . '/index.php';
-    }
-
     return [
         'inline_keyboard' => [[
-            ['text' => '🚀 Open Refer & Earn', 'web_app' => ['url' => $webAppUrl]],
+            ['text' => '🚀 Open Refer & Earn', 'web_app' => ['url' => web_app_url()]],
         ]],
     ];
 }

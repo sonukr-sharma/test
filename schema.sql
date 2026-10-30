@@ -421,7 +421,7 @@ INSERT INTO `settings` (`key`, `value`, `data_type`, `group_name`, `label`) VALU
   ('min_withdrawal_t',         '2000',                         'decimal', 'withdrawal','Minimum Withdrawal Amount (T)'),
   ('max_withdrawal_t',         '50000',                        'decimal', 'withdrawal','Maximum Withdrawal Amount (T)'),
   ('auto_approve_withdrawals', '0',                            'boolean', 'withdrawal','Auto Approve Withdrawals'),
-  ('withdrawal_api_url',       'https://yourdomain.com/api/withdraw', 'url', 'withdrawal','Withdrawal API URL'),
+  ('withdrawal_api_url',       '',                             'url',     'withdrawal','Withdrawal API URL'),
   ('coin_to_inr_rate',         '0.10',                         'decimal', 'withdrawal','Conversion rate: 1 T in ₹'),
   ('bot_token',                '',                             'secret',  'bot',       'Telegram Bot Token'),
   ('bot_web_app_url',          '',                             'url',     'bot',       'Bot Web App URL'),

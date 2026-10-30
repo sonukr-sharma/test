@@ -326,7 +326,7 @@ function broadcast_icon(string $mediaType): array
                       </div>
                       <div>
                         <label class="block text-xs font-medium text-slate-700 mb-1">Button Link</label>
-                        <input type="text" data-field="btnLink" placeholder="https://your-link.com" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
+                        <input type="text" data-field="btnLink" placeholder="<?= e(APP_URL) ?>/refer-earn.php" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
                       </div>
                       <div>
                         <label class="block text-xs font-medium text-slate-700 mb-1">Button Style</label>
@@ -383,7 +383,7 @@ function broadcast_icon(string $mediaType): array
                       </div>
                       <div>
                         <label class="block text-xs font-medium text-slate-700 mb-1">Button Link</label>
-                        <input type="text" data-field="btnLink" placeholder="https://your-link.com" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
+                        <input type="text" data-field="btnLink" placeholder="<?= e(APP_URL) ?>/refer-earn.php" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
                       </div>
                       <div>
                         <label class="block text-xs font-medium text-slate-700 mb-1">Button Style</label>
@@ -440,7 +440,7 @@ function broadcast_icon(string $mediaType): array
                       </div>
                       <div>
                         <label class="block text-xs font-medium text-slate-700 mb-1">Button Link</label>
-                        <input type="text" data-field="btnLink" placeholder="https://your-link.com" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
+                        <input type="text" data-field="btnLink" placeholder="<?= e(APP_URL) ?>/refer-earn.php" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
                       </div>
                       <div>
                         <label class="block text-xs font-medium text-slate-700 mb-1">Button Style</label>
@@ -497,7 +497,7 @@ function broadcast_icon(string $mediaType): array
                       </div>
                       <div>
                         <label class="block text-xs font-medium text-slate-700 mb-1">Button Link</label>
-                        <input type="text" data-field="btnLink" placeholder="https://your-link.com" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
+                        <input type="text" data-field="btnLink" placeholder="<?= e(APP_URL) ?>/refer-earn.php" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
                       </div>
                       <div>
                         <label class="block text-xs font-medium text-slate-700 mb-1">Button Style</label>
@@ -557,14 +557,14 @@ function broadcast_icon(string $mediaType): array
                 <button type="button" data-open="```&#10;" data-close="&#10;```" data-ph="code block" class="fmt-chip flex items-center justify-center gap-1.5 bg-white/80 hover:bg-white border border-white hover:border-[#6339f9]/40 rounded-lg px-2 py-1.5 text-[10px] font-mono text-slate-700 transition">
                   <span>```Block```</span>
                 </button>
-                <button type="button" data-open="[" data-close="](https://example.com)" data-ph="Link text" class="fmt-chip flex items-center justify-center gap-1.5 bg-white/80 hover:bg-white border border-white hover:border-[#6339f9]/40 rounded-lg px-2 py-1.5 text-[10px] font-mono text-slate-700 transition">
+                <button type="button" data-open="[" data-close="](<?= e(APP_URL) ?>)" data-ph="Link text" class="fmt-chip flex items-center justify-center gap-1.5 bg-white/80 hover:bg-white border border-white hover:border-[#6339f9]/40 rounded-lg px-2 py-1.5 text-[10px] font-mono text-slate-700 transition">
                   <span>[Link](url)</span>
                 </button>
                 <button type="button" data-open="&gt; " data-close="" data-ph="quoted text" class="fmt-chip flex items-center justify-center gap-1.5 bg-white/80 hover:bg-white border border-white hover:border-[#6339f9]/40 rounded-lg px-2 py-1.5 text-[10px] font-mono text-slate-700 transition">
                   <span>&gt; Quote</span>
                 </button>
-                <button type="button" data-open="ðŸ˜€" data-close="" data-ph="" class="fmt-chip flex items-center justify-center gap-1.5 bg-white/80 hover:bg-white border border-white hover:border-[#6339f9]/40 rounded-lg px-2 py-1.5 text-[10px] font-mono text-slate-700 transition">
-                  <span>ðŸ˜€ Emoji</span>
+                <button type="button" data-open="😀" data-close="" data-ph="" class="fmt-chip flex items-center justify-center gap-1.5 bg-white/80 hover:bg-white border border-white hover:border-[#6339f9]/40 rounded-lg px-2 py-1.5 text-[10px] font-mono text-slate-700 transition">
+                  <span>😀 Emoji</span>
                 </button>
               </div>
               <p class="text-[10px] text-slate-500 mt-2">You can also use emojis and line breaks.</p>
@@ -648,15 +648,15 @@ function broadcast_icon(string $mediaType): array
                     </div>
                   </div>
                   <!-- Message Text -->
-                  <div id="previewText" class="whitespace-pre-wrap break-words text-slate-800">ðŸŽ‰ Earn 150 T per Referral!
+                  <div id="previewText" class="whitespace-pre-wrap break-words text-slate-800">🎉 Earn 150 T per Referral!
 
 Invite your friends and earn 150 T for each successful referral.
 
-âœ… More Friends
-âœ… More Rewards
-âœ… No Limit
+✅ More Friends
+✅ More Rewards
+✅ No Limit
 
-â° Start now and earn instantly!</div>
+⏰ Start now and earn instantly!</div>
                   <div id="previewTime" class="text-right text-[10px] text-slate-400 mt-1"> 10:30 AM </div>
                 </div>
                 <!-- Telegram Inline Buttons -->
@@ -810,7 +810,7 @@ Invite your friends and earn 150 T for each successful referral.
 						</div>
 						<div>
 							<label class="block text-xs font-medium text-slate-700 mb-1">Button Link</label>
-							<input type="text" data-field="btnLink" placeholder="https://your-link.com" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
+							<input type="text" data-field="btnLink" placeholder="<?= e(APP_URL) ?>/refer-earn.php" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
 						</div>
 						<div>
 							<label class="block text-xs font-medium text-slate-700 mb-1">Button Style</label>
@@ -1190,7 +1190,7 @@ Invite your friends and earn 150 T for each successful referral.
         if (file) {
           label.textContent = file.name;
           label.classList.add('truncate', 'max-w-full');
-          hint.textContent = formatSize(file.size) + ' Â· click to change';
+          hint.textContent = formatSize(file.size) + ' · click to change';
         } else {
           label.textContent = box.dataset.defaultLabel;
           label.classList.remove('truncate', 'max-w-full');

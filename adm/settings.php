@@ -317,10 +317,10 @@ $s = settings();
                         </div>
 
             <div>
-              <label class="block text-xs font-medium text-slate-700 mb-1.5">Conversion Rate (â‚¹ per 1 T)</label>
+              <label class="block text-xs font-medium text-slate-700 mb-1.5">Conversion Rate (₹ per 1 T)</label>
               <div class="flex rounded-lg border border-slate-200 overflow-hidden focus-within:border-indigo-500">
                 <input type="text" name="coin_to_inr_rate" value="<?= e((string) $s['coin_to_inr_rate']) ?>" class="w-full px-3.5 py-2 text-sm text-slate-800 bg-white focus:outline-none" />
-                <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">â‚¹</span>
+                <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">₹</span>
               </div>
             </div>
 
@@ -366,11 +366,12 @@ $s = settings();
                   <div>
                     <label class="block text-xs font-medium text-slate-700 mb-1">Withdrawal API URL</label>
                     <div class="flex items-center rounded-lg border border-slate-200 bg-slate-50/70 overflow-hidden focus-within:border-indigo-500">
-                      <input type="text" name="withdrawal_api_url" value="<?= e((string) $s['withdrawal_api_url']) ?>" class="w-full px-3.5 py-2 text-xs text-slate-600 bg-transparent focus:outline-none min-w-0" />
-                      <button class="px-3 py-2 text-slate-400 hover:text-slate-600 shrink-0">
+                      <input id="withdrawalApiUrl" type="text" name="withdrawal_api_url" value="<?= e((string) $s['withdrawal_api_url']) ?>" placeholder="https://your-payout-service.com/api/withdraw" class="w-full px-3.5 py-2 text-xs text-slate-600 bg-transparent focus:outline-none min-w-0" />
+                      <button type="button" data-copy-target="withdrawalApiUrl" class="px-3 py-2 text-slate-400 hover:text-slate-600 shrink-0">
                         <i class="fa-regular fa-copy text-xs"></i>
                       </button>
                     </div>
+                    <p class="mt-1 text-[11px] text-slate-400">Optional. Only needed to forward payouts to an external service — leave blank to keep withdrawals in the admin panel.</p>
                   </div>
                 </div>
 
@@ -415,11 +416,12 @@ $s = settings();
                   <div>
                     <label class="block text-xs font-medium text-slate-700 mb-1">Bot Web App URL</label>
                     <div class="flex items-center rounded-lg border border-slate-200 bg-slate-50/70 overflow-hidden focus-within:border-indigo-500">
-                      <input id="botWebAppUrl" name="bot_web_app_url" type="text" value="<?= e((string) $s['bot_web_app_url']) ?>" class="w-full px-3.5 py-2 text-xs text-slate-600 bg-transparent focus:outline-none min-w-0" />
-                      <button class="px-3 py-2 text-slate-400 hover:text-slate-600 shrink-0">
+                      <input id="botWebAppUrl" name="bot_web_app_url" type="text" value="<?= e((string) $s['bot_web_app_url']) ?>" placeholder="<?= e(web_app_url()) ?>" class="w-full px-3.5 py-2 text-xs text-slate-600 bg-transparent focus:outline-none min-w-0" />
+                      <button type="button" data-copy-target="botWebAppUrl" class="px-3 py-2 text-slate-400 hover:text-slate-600 shrink-0">
                         <i class="fa-regular fa-copy text-xs"></i>
                       </button>
                     </div>
+                    <p class="mt-1 text-[11px] text-slate-400">Leave blank to follow the current domain automatically: <span class="font-mono"><?= e(web_app_url()) ?></span></p>
                   </div>
 
                   <a href="../webhook/setup.php" class="flex items-center justify-center gap-2 w-full px-3.5 py-2 rounded-lg border border-[#1d9bf0]/30 bg-[#e5f4ff]/60 text-xs font-semibold text-[#1d9bf0] hover:bg-[#e5f4ff] transition-colors">
@@ -604,11 +606,22 @@ $s = settings();
       backdrop.classList.toggle('hidden');
     }
 
-        // Auto-fill the Bot Web App URL from the current origin when empty
-        const webAppUrlInput = document.getElementById('botWebAppUrl');
-        if (webAppUrlInput && !webAppUrlInput.value) {
-          webAppUrlInput.value = window.location.origin;
-        }
-      </script>
+    // Copy buttons: copy the input's value, or its placeholder when left blank
+    // (blank means "follow the current domain", so the placeholder is the real URL).
+    document.querySelectorAll('[data-copy-target]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const input = document.getElementById(btn.dataset.copyTarget);
+        if (!input) return;
+        const text = input.value.trim() || input.placeholder || '';
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(function () {
+          const icon = btn.querySelector('i');
+          if (!icon) return;
+          icon.className = 'fa-solid fa-check text-xs text-emerald-500';
+          setTimeout(function () { icon.className = 'fa-regular fa-copy text-xs'; }, 1500);
+        });
+      });
+    });
+  </script>
 </body>
 </html>

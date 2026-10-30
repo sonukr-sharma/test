@@ -241,8 +241,8 @@ try {
         <span>
           Telegram only accepts <strong>HTTPS</strong> webhook URLs. The computed URL is
           <span class="font-mono text-xs"><?= e($webhookUrl) ?></span>.
-          Deploy behind HTTPS (or use a tunnel such as ngrok) and set
-          <span class="font-mono text-xs">bot_web_app_url</span> to the public address.
+          Deploy behind HTTPS (or use a tunnel such as ngrok) and reload this page —
+          the URL is detected from the current domain automatically.
         </span>
       </div>
     <?php endif; ?>
@@ -425,15 +425,16 @@ try {
       <ol class="text-xs text-slate-600 space-y-1.5 list-decimal list-inside font-medium">
         <li>Create a bot with <span class="font-mono font-bold">@BotFather</span> and copy the token.</li>
         <li>Paste the token into <a href="<?= e(APP_URL) ?>/adm/settings.php" class="text-[#5925dc] font-bold underline">Admin → Settings</a> and save.</li>
-        <li>Set <span class="font-mono">bot_web_app_url</span> to your public HTTPS mini-app URL.</li>
+        <li>Set <span class="font-mono">bot_web_app_url</span> to your public HTTPS mini-app URL — or leave it blank and it follows the current domain automatically.</li>
         <li>Serve this app over HTTPS, then press <strong>Set Webhook</strong> above.</li>
         <li>Open the bot in Telegram and send <span class="font-mono">/start</span>.</li>
       </ol>
       <?php if ($isLocal): ?>
         <p class="mt-3 text-[11px] text-slate-400 font-medium leading-relaxed">
           Local development tip: expose this folder with a tunnel
-          (<span class="font-mono">ngrok http 80</span>) and use the tunnel's HTTPS URL as
-          <span class="font-mono">bot_web_app_url</span>. Telegram cannot reach <span class="font-mono">127.0.0.1</span>.
+          (<span class="font-mono">ngrok http 80</span>) and open this page through the tunnel's
+          HTTPS URL — the webhook and WebApp URLs are detected from the request, so they update
+          automatically. Telegram cannot reach <span class="font-mono"><?= e(APP_HOST) ?></span>.
         </p>
       <?php endif; ?>
     </div>

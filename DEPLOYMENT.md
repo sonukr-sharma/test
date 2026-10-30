@@ -102,7 +102,8 @@ Copy `.env.example` to `.env` in the web root and fill in real values:
 ```ini
 APP_ENV=production
 APP_DEBUG=0
-APP_URL=https://yourdomain.com
+# APP_URL is optional — omit it and the domain is auto-detected per request.
+# APP_URL=https://yourdomain.com
 APP_TIMEZONE=Asia/Kolkata
 
 DB_HOST=localhost
@@ -119,7 +120,12 @@ LOG_DIR=/home/myuser/logs
 
 Rules:
 
-- `APP_URL` — **no trailing slash**, must be the exact public HTTPS origin.
+- `APP_URL` — **optional**. When omitted, the app derives the origin from each
+  request (`HTTP_HOST` plus `HTTPS` / `X-Forwarded-Proto`), so links, the
+  Telegram webhook URL and the WebApp button all follow whatever domain the
+  site is served from. Set it only if detection is wrong — for example when the
+  app lives in a subdirectory (`https://example.com/app`) or a proxy rewrites
+  the host. **No trailing slash** when you do set it.
 - `APP_DEBUG=0` — always in production. `1` prints stack traces to visitors.
 - `LOG_DIR` — an absolute path to a writable folder **outside** `public_html`.
   Leave empty to use the host's default error log.
@@ -180,8 +186,12 @@ Go to **Admin → Settings** and fill in:
 |---|---|
 | `bot_token` | The token from @BotFather |
 | `bot_username` | Your bot's username **without** the `@` |
-| `bot_web_app_url` | `https://yourdomain.com` — the same as `APP_URL` |
+| `bot_web_app_url` | **Leave blank** — it follows the current domain automatically. Set it only to pin a specific URL. |
 | `webhook_secret` | Any long random string (letters + digits) |
+
+The same applies to `withdrawal_api_url`: it is an optional external payout hook
+and nothing in this app calls it. Leave it blank unless you are forwarding
+withdrawals to your own payout service.
 
 Generate a secret:
 
