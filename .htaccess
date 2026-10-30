@@ -62,7 +62,6 @@ Options -Indexes
 #     RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 # </IfModule>
 
-# --- Custom error pages -----------------------------------------------
-# 403 is intentionally left to Apache so blocked files return an empty body
-# instead of re-entering the app (which would itself return 403).
-ErrorDocument 404 /index.php
+# --- Error pages ------------------------------------------------------
+# Left to Apache's defaults on purpose: routing 403/404 back into index.php
+# would re-enter the gated app and mask the real status code.
