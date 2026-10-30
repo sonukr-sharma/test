@@ -848,6 +848,19 @@ function bot_token(): string
 }
 
 /**
+ * Base URL for the Telegram Bot API.
+ *
+ * Overridable via TELEGRAM_API_BASE so the delivery path can be exercised
+ * against a local mock without touching production code.
+ */
+function telegram_api_base(): string
+{
+    $base = env('TELEGRAM_API_BASE', 'https://api.telegram.org');
+
+    return rtrim($base !== null && $base !== '' ? $base : 'https://api.telegram.org', '/');
+}
+
+/**
  * Call a Telegram Bot API method.
  *
  * @param  array<string, mixed> $params
@@ -861,7 +874,7 @@ function telegram_api(string $method, array $params = [], int $timeout = 15): ar
         return ['ok' => false, 'error' => 'Bot token is not configured.'];
     }
 
-    $url = 'https://api.telegram.org/bot' . $token . '/' . $method;
+    $url = telegram_api_base() . '/bot' . $token . '/' . $method;
 
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -1003,20 +1016,107 @@ function bot_username(bool $refresh = false): string
  * @param  array<string, mixed>|null $replyMarkup
  * @return array{ok: bool, result?: mixed, description?: string, error?: string}
  */
-function telegram_send_message(int|string $chatId, string $text, ?array $replyMarkup = null): array
+function telegram_send_message(int|string $chatId, string $text, ?array $replyMarkup = null, string $parseMode = 'HTML'): array
 {
     $params = [
         'chat_id'                  => $chatId,
         'text'                     => $text,
-        'parse_mode'               => 'HTML',
         'disable_web_page_preview' => 'true',
     ];
+
+    if ($parseMode !== 'none' && $parseMode !== '') {
+        $params['parse_mode'] = $parseMode;
+    }
 
     if ($replyMarkup !== null) {
         $params['reply_markup'] = json_encode($replyMarkup);
     }
 
     return telegram_api('sendMessage', $params);
+}
+
+/**
+ * Send a photo, video or document to a Telegram chat.
+ *
+ * The file is uploaded from disk as multipart/form-data so the admin never
+ * has to host it at a public URL.
+ *
+ * @param  array<string, mixed>|null $replyMarkup
+ * @return array{ok: bool, result?: mixed, description?: string, error?: string}
+ */
+function telegram_send_media(int|string $chatId, string $mediaType, string $filePath, string $caption = '', ?array $replyMarkup = null, string $parseMode = 'HTML'): array
+{
+    $method = match ($mediaType) {
+        'image' => 'sendPhoto',
+        'video' => 'sendVideo',
+        'file'  => 'sendDocument',
+        default => null,
+    };
+
+    if ($method === null) {
+        return ['ok' => false, 'error' => 'Unsupported media type: ' . $mediaType];
+    }
+
+    $token = bot_token();
+
+    if ($token === '') {
+        return ['ok' => false, 'error' => 'Bot token is not configured.'];
+    }
+
+    if (!is_file($filePath)) {
+        return ['ok' => false, 'error' => 'Media file is missing: ' . basename($filePath)];
+    }
+
+    $field = match ($mediaType) {
+        'image' => 'photo',
+        'video' => 'video',
+        'file'  => 'document',
+    };
+
+    $params = [
+        'chat_id'    => (string) $chatId,
+        $field       => new CURLFile($filePath),
+    ];
+
+    if ($parseMode !== 'none' && $parseMode !== '') {
+        $params['parse_mode'] = $parseMode;
+    }
+
+    if ($caption !== '') {
+        $params['caption'] = $caption;
+    }
+
+    if ($replyMarkup !== null) {
+        $params['reply_markup'] = json_encode($replyMarkup);
+    }
+
+    $ch = curl_init(telegram_api_base() . '/bot' . $token . '/' . $method);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $params,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 90,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+    ]);
+
+    $body  = curl_exec($ch);
+    $errNo = curl_errno($ch);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    if ($body === false || $errNo !== 0) {
+        return ['ok' => false, 'error' => 'cURL error: ' . ($error !== '' ? $error : (string) $errNo)];
+    }
+
+    $decoded = json_decode((string) $body, true);
+
+    if (!is_array($decoded)) {
+        return ['ok' => false, 'error' => 'Invalid JSON from Telegram: ' . substr((string) $body, 0, 200)];
+    }
+
+    return $decoded;
 }
 
 /* ---------------------------------------------------------------------
@@ -2068,4 +2168,216 @@ function flash_get(): ?array
     unset($_SESSION['flash']);
 
     return is_array($flash) ? $flash : null;
+}
+
+/* ---------------------------------------------------------------------
+ | 11. Broadcast delivery
+ * ------------------------------------------------------------------- */
+
+/**
+ * Absolute path of the private directory that holds broadcast uploads.
+ *
+ * It lives outside the document root's asset folder and is protected by
+ * .htaccess, so uploaded media is never publicly reachable.
+ */
+function broadcast_upload_dir(): string
+{
+    $dir = __DIR__ . '/uploads/broadcasts';
+
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+
+    return $dir;
+}
+
+/**
+ * Resolve the audience of a broadcast to a list of Telegram chat ids.
+ *
+ * Only users who have started the bot can receive messages, so
+ * `bot_started_at` is always required.
+ *
+ * @return list<array{id: int, telegram_id: int}>
+ */
+function broadcast_recipients(string $audience): array
+{
+    $sql    = 'SELECT `id`, `telegram_id` FROM `users` WHERE `bot_started_at` IS NOT NULL AND `status` <> \'blocked\'';
+    $params = [];
+
+    if ($audience === 'active') {
+        $sql .= ' AND `last_active_at` IS NOT NULL AND `last_active_at` >= :since';
+        $params[':since'] = date('Y-m-d H:i:s', strtotime('-30 days'));
+    } elseif ($audience === 'inactive') {
+        $sql .= ' AND (`last_active_at` IS NULL OR `last_active_at` < :since)';
+        $params[':since'] = date('Y-m-d H:i:s', strtotime('-30 days'));
+    }
+
+    $sql .= ' ORDER BY `id`';
+
+    try {
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+
+        return array_map(
+            static fn (array $row): array => [
+                'id'          => (int) $row['id'],
+                'telegram_id' => (int) $row['telegram_id'],
+            ],
+            $stmt->fetchAll()
+        );
+    } catch (Throwable $e) {
+        error_log('broadcast_recipients() failed: ' . $e->getMessage());
+
+        return [];
+    }
+}
+
+/**
+ * Build the Telegram `inline_keyboard` markup for a broadcast.
+ *
+ * @param  list<array{label: string, url: string}> $buttons
+ * @return array<string, mixed>|null
+ */
+function broadcast_reply_markup(array $buttons): ?array
+{
+    if ($buttons === []) {
+        return null;
+    }
+
+    $rows = [];
+    foreach ($buttons as $button) {
+        $rows[] = [['text' => (string) $button['label'], 'url' => (string) $button['url']]];
+    }
+
+    return ['inline_keyboard' => $rows];
+}
+
+/**
+ * Deliver one broadcast to its audience, synchronously.
+ *
+ * Writes `sending` before the loop and `sent`/`failed` afterwards, and keeps
+ * the delivered/failed counters current so the dashboard reflects reality
+ * even if the request dies part-way through.
+ *
+ * @return array{status: string, total: int, delivered: int, failed: int, error: string}
+ */
+function broadcast_deliver(int $broadcastId): array
+{
+    $result = ['status' => 'failed', 'total' => 0, 'delivered' => 0, 'failed' => 0, 'error' => ''];
+
+    $pdo = db();
+
+    $stmt = $pdo->prepare('SELECT * FROM `broadcasts` WHERE `id` = :id LIMIT 1');
+    $stmt->execute([':id' => $broadcastId]);
+    $broadcast = $stmt->fetch();
+
+    if (!$broadcast) {
+        $result['error'] = 'Broadcast not found.';
+
+        return $result;
+    }
+
+    if (bot_token() === '') {
+        $result['error'] = 'Bot token is not configured.';
+
+        return $result;
+    }
+
+    $btnStmt = $pdo->prepare(
+        'SELECT `label`, `url` FROM `broadcast_buttons` WHERE `broadcast_id` = :id ORDER BY `position`'
+    );
+    $btnStmt->execute([':id' => $broadcastId]);
+    $replyMarkup = broadcast_reply_markup($btnStmt->fetchAll());
+
+    $recipients = broadcast_recipients((string) $broadcast['audience']);
+    $total      = count($recipients);
+
+    $pdo->prepare(
+        'UPDATE `broadcasts`
+            SET `status` = :status, `total_recipients` = :total,
+                `delivered_count` = 0, `failed_count` = 0
+          WHERE `id` = :id'
+    )->execute([':status' => 'sending', ':total' => $total, ':id' => $broadcastId]);
+
+    $result['status'] = 'sending';
+    $result['total']  = $total;
+
+    if ($total === 0) {
+        $pdo->prepare(
+            'UPDATE `broadcasts` SET `status` = :status, `sent_at` = NOW() WHERE `id` = :id'
+        )->execute([':status' => 'failed', ':id' => $broadcastId]);
+
+        $result['status'] = 'failed';
+        $result['error']  = 'No users have started the bot yet, so there was nobody to send to.';
+
+        return $result;
+    }
+
+    $mediaType = (string) $broadcast['media_type'];
+    $mediaPath = (string) ($broadcast['media_path'] ?? '');
+    $text      = (string) ($broadcast['message_text'] ?? '');
+    $parseMode = (string) ($broadcast['parse_mode'] ?? 'HTML');
+    $useMedia  = $mediaType !== 'none' && $mediaPath !== '' && is_file($mediaPath);
+
+    $delivered = 0;
+    $failed    = 0;
+    $lastError = '';
+
+    foreach ($recipients as $recipient) {
+        $chatId = $recipient['telegram_id'];
+
+        $response = $useMedia
+            ? telegram_send_media($chatId, $mediaType, $mediaPath, $text, $replyMarkup, $parseMode)
+            : telegram_send_message($chatId, $text, $replyMarkup, $parseMode);
+
+        // Telegram rate-limits at ~30 messages/second; back off and retry once.
+        if (($response['ok'] ?? false) !== true && (int) ($response['error_code'] ?? 0) === 429) {
+            $retryAfter = (int) ($response['parameters']['retry_after'] ?? 1);
+            sleep(max(1, min(30, $retryAfter)));
+
+            $response = $useMedia
+                ? telegram_send_media($chatId, $mediaType, $mediaPath, $text, $replyMarkup, $parseMode)
+                : telegram_send_message($chatId, $text, $replyMarkup, $parseMode);
+        }
+
+        // A malformed entity would otherwise fail for every single recipient.
+        if (($response['ok'] ?? false) !== true && (int) ($response['error_code'] ?? 0) === 400
+            && stripos((string) ($response['description'] ?? ''), 'entit') !== false) {
+            $response = $useMedia
+                ? telegram_send_media($chatId, $mediaType, $mediaPath, $text, $replyMarkup, 'none')
+                : telegram_send_message($chatId, $text, $replyMarkup, 'none');
+        }
+
+        if (($response['ok'] ?? false) === true) {
+            $delivered++;
+        } else {
+            $failed++;
+            $lastError = (string) ($response['description'] ?? $response['error'] ?? 'Unknown error');
+        }
+
+        // Persist progress in batches so a timeout still leaves usable counts.
+        if (($delivered + $failed) % 25 === 0) {
+            $pdo->prepare(
+                'UPDATE `broadcasts` SET `delivered_count` = :d, `failed_count` = :f WHERE `id` = :id'
+            )->execute([':d' => $delivered, ':f' => $failed, ':id' => $broadcastId]);
+        }
+
+        // Stay well under Telegram's per-chat and global limits.
+        usleep(50000);
+    }
+
+    $status = $delivered > 0 ? 'sent' : 'failed';
+
+    $pdo->prepare(
+        'UPDATE `broadcasts`
+            SET `status` = :status, `delivered_count` = :d, `failed_count` = :f, `sent_at` = NOW()
+          WHERE `id` = :id'
+    )->execute([':status' => $status, ':d' => $delivered, ':f' => $failed, ':id' => $broadcastId]);
+
+    $result['status']    = $status;
+    $result['delivered'] = $delivered;
+    $result['failed']    = $failed;
+    $result['error']     = $delivered === 0 ? $lastError : '';
+
+    return $result;
 }

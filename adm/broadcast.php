@@ -212,12 +212,10 @@ function broadcast_icon(string $mediaType): array
         </div>
       </header>
 
-      <?php if ($flash !== null): ?>
-        <div class="mb-5 flex items-start gap-2.5 rounded-xl px-4 py-3 text-xs font-medium border <?= $flash['type'] === 'error' ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700' ?>">
-          <i class="fa-solid <?= $flash['type'] === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check' ?> mt-0.5 shrink-0"></i>
-          <span><?= e($flash['message']) ?></span>
-        </div>
-      <?php endif; ?>
+      <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 transition-all duration-300 opacity-0 pointer-events-none translate-y-3">
+        <i class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span id="toastMsg">Notification</span>
+      </div>
       <!-- Top KPI Cards Row -->
       <section class="grid grid-cols-2 xl:grid-cols-4 gap-2.5 sm:gap-5 mb-6">
         <!-- Total Broadcasts -->
@@ -272,9 +270,9 @@ function broadcast_icon(string $mediaType): array
       <!-- Main 3-Column Broadcast Layout -->
       <section class="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 items-stretch">
         <!-- Column 1: Send Broadcast (4 Cols on XL, 6 on LG) -->
-        <form id="broadcastForm" method="post" action="broadcast_send.php" class="lg:col-span-6 xl:col-span-4 bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 flex flex-col justify-between">
+        <form id="broadcastForm" method="post" action="broadcast_send.php" enctype="multipart/form-data" class="lg:col-span-6 xl:col-span-4 bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 flex flex-col justify-between">
           <?= csrf_field() ?>
-          <input type="hidden" name="media_type" id="mediaTypeInput" value="text" />
+          <input type="hidden" name="media_type" id="mediaTypeInput" value="none" />
           <input type="hidden" name="message_text" id="messageTextInput" value="" />
           <input type="hidden" name="buttons" id="buttonsInput" value="[]" />
           <div>
@@ -361,7 +359,7 @@ function broadcast_icon(string $mediaType): array
                     <i class="fa-solid fa-cloud-arrow-up text-2xl text-slate-400 mb-2"></i>
                     <p data-upload-label class="text-xs font-medium text-slate-700">Click to upload an image</p>
                     <p data-upload-hint class="text-[11px] text-slate-400 mt-1">PNG, JPG or GIF up to 5MB</p>
-                    <input type="file" accept="image/*" data-field="media" class="hidden" />
+                    <input type="file" accept="image/*" name="media_image" data-field="media" class="hidden" />
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-slate-700 mb-1.5">Caption (Optional)</label>
@@ -418,7 +416,7 @@ function broadcast_icon(string $mediaType): array
                     <i class="fa-solid fa-file-video text-2xl text-slate-400 mb-2"></i>
                     <p data-upload-label class="text-xs font-medium text-slate-700">Click to upload a video</p>
                     <p data-upload-hint class="text-[11px] text-slate-400 mt-1">MP4 or MOV up to 50MB</p>
-                    <input type="file" accept="video/*" data-field="media" class="hidden" />
+                    <input type="file" accept="video/*" name="media_video" data-field="media" class="hidden" />
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-slate-700 mb-1.5">Caption (Optional)</label>
@@ -475,7 +473,7 @@ function broadcast_icon(string $mediaType): array
                     <i class="fa-solid fa-file-arrow-up text-2xl text-slate-400 mb-2"></i>
                     <p data-upload-label class="text-xs font-medium text-slate-700">Click to upload a file</p>
                     <p data-upload-hint class="text-[11px] text-slate-400 mt-1">PDF, DOC, XLS or ZIP up to 20MB</p>
-                    <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.zip" data-field="media" class="hidden" />
+                    <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.zip" name="media_file" data-field="media" class="hidden" />
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-slate-700 mb-1.5">Caption (Optional)</label>
@@ -748,6 +746,31 @@ Invite your friends and earn 150 T for each successful referral.
       </section>
     </main>
     <script>
+      let toastTimeout;
+
+      function showToast(message, isError) {
+        const toast = document.getElementById('toast');
+        const toastMsg = document.getElementById('toastMsg');
+        const icon = toast.querySelector('i');
+        toastMsg.textContent = message;
+        icon.className = isError ? 'fa-solid fa-circle-exclamation text-rose-400' : 'fa-solid fa-circle-check text-emerald-400';
+
+        toast.classList.remove('opacity-0', 'translate-y-3');
+        toast.classList.add('opacity-100', 'translate-y-0');
+
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+          toast.classList.remove('opacity-100', 'translate-y-0');
+          toast.classList.add('opacity-0', 'translate-y-3');
+        }, 4000);
+      }
+
+      const serverFlash = <?= json_encode($flash, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+      if (serverFlash && serverFlash.message) {
+        showToast(serverFlash.message, serverFlash.type === 'error');
+      }
+
       function toggleSidebar() {
         const sidebar = document.getElementById('sidebar');
         const backdrop = document.getElementById('sidebar-backdrop');
@@ -1239,7 +1262,22 @@ Invite your friends and earn 150 T for each successful referral.
 
         if (text.trim() === '' && buttons.length === 0) {
           e.preventDefault();
-          alert('Add a message or at least one button before sending.');
+          showToast('Add a message or at least one button before sending.', true);
+          return;
+        }
+
+        if (activeTab !== 'text' && !mediaState[activeTab]) {
+          e.preventDefault();
+          showToast('Choose a file to upload for this ' + activeTab + ' broadcast.', true);
+          return;
+        }
+
+        // Delivery is synchronous, so keep the admin informed while it runs.
+        const submitBtn = broadcastForm.querySelector('button[type="submit"]');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.classList.add('opacity-70', 'cursor-not-allowed');
+          submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-xs"></i><span>Sending…</span>';
         }
       });
 

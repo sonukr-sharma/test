@@ -26,6 +26,9 @@ Options -Indexes
     Require all denied
 </Files>
 
+# --- Broadcast uploads are read by PHP only, never served -------------
+RedirectMatch 404 ^/uploads/
+
 # --- Security headers -------------------------------------------------
 <IfModule mod_headers.c>
     Header always set X-Content-Type-Options "nosniff"
