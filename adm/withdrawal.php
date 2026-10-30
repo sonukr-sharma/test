@@ -1,3 +1,149 @@
+<?php
+/**
+ * Admin — Withdrawals dashboard
+ */
+declare(strict_types=1);
+
+require_once __DIR__ . '/../config.php';
+
+$admin = require_admin();
+
+/* ---------------------------------------------------------------------
+ |  Filters
+ * ------------------------------------------------------------------- */
+
+$allowedStatuses = ['all', 'pending', 'completed', 'rejected'];
+$statusFilter    = (string) ($_GET['status'] ?? 'all');
+if (!in_array($statusFilter, $allowedStatuses, true)) {
+    $statusFilter = 'all';
+}
+
+$search = trim((string) ($_GET['q'] ?? ''));
+
+$perPage = (int) ($_GET['per'] ?? 10);
+if (!in_array($perPage, [10, 25, 50], true)) {
+    $perPage = 10;
+}
+
+$page = max(1, (int) ($_GET['page'] ?? 1));
+
+/* ---------------------------------------------------------------------
+ |  Data
+ * ------------------------------------------------------------------- */
+
+$stats = [
+    'total_requests'    => 0,
+    'pending_count'     => 0,
+    'completed_count'   => 0,
+    'rejected_count'    => 0,
+    'total_withdrawn_t' => 0.0,
+    'pending_amount_t'  => 0.0,
+];
+
+$withdrawals = [];
+$loadError   = null;
+$totalRows   = 0;
+$totalPages  = 1;
+
+try {
+    $stats = array_merge($stats, db()->query('SELECT * FROM `v_withdrawal_stats`')->fetch() ?: []);
+
+    $sql = 'SELECT w.`id`, w.`amount_t`, w.`amount_inr`, w.`payout_method`, w.`upi_id`,
+                   w.`bank_account_name`, w.`bank_account_number`, w.`status`,
+                   w.`requested_at`, w.`processed_at`,
+                   u.`id` AS `user_id`, u.`username`, u.`telegram_id`
+              FROM `withdrawals` w
+              JOIN `users` u ON u.`id` = w.`user_id`';
+
+    $params = [];
+    $where  = [];
+
+    if ($statusFilter !== 'all') {
+        $where[] = 'w.`status` = :status';
+        $params[':status'] = $statusFilter;
+    }
+
+    if ($search !== '') {
+        $where[] = '(u.`username` LIKE :q1 OR w.`upi_id` LIKE :q2 OR u.`telegram_id` LIKE :q3)';
+        $like = '%' . $search . '%';
+        $params[':q1'] = $like;
+        $params[':q2'] = $like;
+        $params[':q3'] = $like;
+    }
+
+    if ($where !== []) {
+        $sql .= ' WHERE ' . implode(' AND ', $where);
+    }
+
+    $countStmt = db()->prepare('SELECT COUNT(*) FROM (' . $sql . ') AS `filtered`');
+    $countStmt->execute($params);
+    $totalRows = (int) $countStmt->fetchColumn();
+
+    $totalPages = max(1, (int) ceil($totalRows / $perPage));
+    $page       = min($page, $totalPages);
+    $offset     = ($page - 1) * $perPage;
+
+    $sql .= ' ORDER BY w.`requested_at` DESC LIMIT ' . $perPage . ' OFFSET ' . $offset;
+
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    $withdrawals = $stmt->fetchAll();
+} catch (Throwable $e) {
+    error_log('Withdrawals load failed: ' . $e->getMessage());
+    $loadError = APP_DEBUG ? $e->getMessage() : 'Unable to load withdrawals right now.';
+}
+
+/* ---------------------------------------------------------------------
+ |  Helpers
+ * ------------------------------------------------------------------- */
+
+function status_badge(string $status): array
+{
+    return match ($status) {
+        'pending'    => ['bg-amber-100 text-amber-700', 'Pending'],
+        'processing' => ['bg-blue-100 text-blue-700', 'Processing'],
+        'completed'  => ['bg-emerald-100 text-emerald-700', 'Completed'],
+        'rejected'   => ['bg-rose-100 text-rose-700', 'Rejected'],
+        'cancelled'  => ['bg-slate-100 text-slate-600', 'Cancelled'],
+        default      => ['bg-slate-100 text-slate-600', ucfirst($status)],
+    };
+}
+
+function payout_details(array $row): array
+{
+    if (($row['payout_method'] ?? 'upi') === 'upi') {
+        return [(string) ($row['upi_id'] ?? '—'), ''];
+    }
+
+    return [
+        (string) ($row['bank_account_number'] ?? '—'),
+        (string) ($row['bank_account_name'] ?? ''),
+    ];
+}
+
+$tabCounts = [
+    'all'       => (int) $stats['total_requests'],
+    'pending'   => (int) $stats['pending_count'],
+    'completed' => (int) $stats['completed_count'],
+    'rejected'  => (int) $stats['rejected_count'],
+];
+
+$flash = $_SESSION['admin_flash'] ?? null;
+unset($_SESSION['admin_flash']);
+
+$rangeLabel = 'All time';
+try {
+    $range = db()->query(
+        'SELECT MIN(`requested_at`) AS `first_at`, MAX(`requested_at`) AS `last_at` FROM `withdrawals`'
+    )->fetch();
+    if (!empty($range['first_at'])) {
+        $rangeLabel = date('M j, Y', strtotime((string) $range['first_at']))
+            . ' - ' . date('M j, Y', strtotime((string) $range['last_at']));
+    }
+} catch (Throwable) {
+    // keep the fallback label
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -78,7 +224,28 @@
           <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Manage and review user withdrawal requests.</p>
         </div>
       </div>
+
+      <!-- Signed-in admin -->
+      <div class="flex items-center gap-3 shrink-0">
+        <div class="hidden sm:block text-right">
+          <p class="text-xs font-semibold text-slate-900"><?= e($admin['name']) ?></p>
+          <p class="text-[11px] text-slate-500"><?= e(ucwords(str_replace('_', ' ', (string) $admin['role']))) ?></p>
+        </div>
+        <div class="w-9 h-9 rounded-full bg-gradient-to-br from-[#6c3cf7] to-[#5a29e4] text-white flex items-center justify-center font-bold text-sm shrink-0">
+          <?= e(strtoupper(substr((string) $admin['name'], 0, 1))) ?>
+        </div>
+        <a href="logout.php" title="Sign out" class="w-9 h-9 rounded-xl border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 flex items-center justify-center transition">
+          <i class="fa-solid fa-arrow-right-from-bracket text-xs"></i>
+        </a>
+      </div>
     </header>
+
+    <?php if ($flash !== null): ?>
+      <div class="mb-5 flex items-start gap-2.5 rounded-xl px-4 py-3 text-xs font-medium border <?= $flash['type'] === 'error' ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700' ?>">
+        <i class="fa-solid <?= $flash['type'] === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check' ?> mt-0.5 shrink-0"></i>
+        <span><?= e($flash['message']) ?></span>
+      </div>
+    <?php endif; ?>
 
     <!-- Top KPI Cards Row (5 Cards) -->
     <section class="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-2.5 sm:gap-5 mb-6">
@@ -89,12 +256,12 @@
         </div>
         <div class="min-w-0">
           <p class="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Total Withdrawal Requests</p>
-          <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5">428</p>
+          <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5"><?= number_format((int) $stats['total_requests']) ?></p>
           <div class="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-emerald-600 mt-1">
             <i class="fa-solid fa-arrow-up text-[10px]"></i>
-            <span>12%</span>
+            <span><?= number_format((int) $stats['pending_count']) ?> pending</span>
           </div>
-          <p class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5">+46 this month</p>
+          <p class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5"><?= e(t_format($stats['pending_amount_t'])) ?> awaiting review</p>
         </div>
       </div>
 
@@ -105,12 +272,12 @@
         </div>
         <div class="min-w-0">
           <p class="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Completed Withdrawals</p>
-          <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5">286</p>
+          <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5"><?= number_format((int) $stats['completed_count']) ?></p>
           <div class="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-emerald-600 mt-1">
             <i class="fa-solid fa-arrow-up text-[10px]"></i>
-            <span>18%</span>
+            <span><?= e(t_format($stats['total_withdrawn_t'])) ?></span>
           </div>
-          <p class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5">+52 this month</p>
+          <p class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5">Paid out successfully</p>
         </div>
       </div>
 
@@ -121,12 +288,12 @@
         </div>
         <div class="min-w-0">
           <p class="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Pending Withdrawals</p>
-          <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5">32</p>
-          <div class="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-emerald-600 mt-1">
-            <i class="fa-solid fa-arrow-up text-[10px]"></i>
-            <span>5%</span>
+          <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5"><?= number_format((int) $stats['pending_count']) ?></p>
+          <div class="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-amber-600 mt-1">
+            <i class="fa-solid fa-clock text-[10px]"></i>
+            <span>Needs review</span>
           </div>
-          <p class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5">₹ 48,200 T</p>
+          <p class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5"><?= e(t_format($stats['pending_amount_t'])) ?></p>
         </div>
       </div>
 
@@ -137,12 +304,12 @@
         </div>
         <div class="min-w-0">
           <p class="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Rejected Withdrawals</p>
-          <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5">110</p>
-          <div class="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-emerald-600 mt-1">
-            <i class="fa-solid fa-arrow-up text-[10px]"></i>
-            <span>3%</span>
+          <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5"><?= number_format((int) $stats['rejected_count']) ?></p>
+          <div class="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-rose-600 mt-1">
+            <i class="fa-solid fa-circle-xmark text-[10px]"></i>
+            <span>Declined</span>
           </div>
-          <p class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5">+12 this month</p>
+          <p class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5">Not paid out</p>
         </div>
       </div>
 
@@ -153,12 +320,12 @@
         </div>
         <div class="min-w-0">
           <p class="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Total Amount Withdrawn</p>
-          <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5">286,500 T</p>
+          <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5"><?= e(t_format($stats['total_withdrawn_t'])) ?></p>
           <div class="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-emerald-600 mt-1">
             <i class="fa-solid fa-arrow-up text-[10px]"></i>
-            <span>20%</span>
+            <span><?= e(inr_format(t_to_inr($stats['total_withdrawn_t']))) ?></span>
           </div>
-          <p class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5">+47,200 T this month</p>
+          <p class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5">Across completed payouts</p>
         </div>
       </div>
     </section>
@@ -171,25 +338,23 @@
       
         <!-- Filter Tabs -->
         <div id="filter-tabs" role="tablist" class="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-semibold text-slate-600">
-          <button type="button" data-filter="all" class="tab-btn px-4 py-2 rounded-lg bg-[#6339f9] text-white shadow-2xs transition">
-            All (428)
-          </button>
-          <button type="button" data-filter="pending" class="tab-btn px-4 py-2 rounded-lg hover:text-slate-900 transition">
-            Pending (32)
-          </button>
-          <button type="button" data-filter="completed" class="tab-btn px-4 py-2 rounded-lg hover:text-slate-900 transition">
-            Completed (286)
-          </button>
-          <button type="button" data-filter="rejected" class="tab-btn px-4 py-2 rounded-lg hover:text-slate-900 transition">
-            Rejected (110)
-          </button>
+          <?php foreach (['all' => 'All', 'pending' => 'Pending', 'completed' => 'Completed', 'rejected' => 'Rejected'] as $key => $label): ?>
+            <?php $active = $statusFilter === $key; ?>
+            <a href="?status=<?= e($key) ?><?= $search !== '' ? '&q=' . urlencode($search) : '' ?>"
+               data-filter="<?= e($key) ?>"
+               role="tab"
+               aria-selected="<?= $active ? 'true' : 'false' ?>"
+               class="tab-btn px-4 py-2 rounded-lg transition <?= $active ? 'bg-[#6339f9] text-white shadow-2xs' : 'hover:text-slate-900' ?>">
+              <?= e($label) ?> (<?= number_format($tabCounts[$key]) ?>)
+            </a>
+          <?php endforeach; ?>
         </div>
 
         <!-- Date Range & Export -->
         <div class="flex flex-wrap items-center gap-3">
           <div class="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium">
             <i class="fa-regular fa-calendar text-slate-400"></i>
-            <span>Oct 1, 2026 - Oct 29, 2026</span>
+            <span><?= e($rangeLabel) ?></span>
             <i class="fa-solid fa-chevron-down text-[10px] text-slate-400 ml-1"></i>
           </div>
 
@@ -218,470 +383,154 @@
           </thead>
           <tbody class="divide-y divide-slate-100 text-slate-700">
             
-            <!-- Row 1 -->
-            <tr data-status="pending" class="hover:bg-slate-50/50 transition">
-              <td class="p-4 text-center">
-                <input type="checkbox" class="w-4 h-4 rounded accent-[#6339f9]" />
-              </td>
-              <td class="py-3.5 px-3 font-medium text-slate-900">1</td>
-              <td class="py-3.5 px-3">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-600 text-xs">
-                    R
-                  </div>
-                  <div>
-                    <p class="font-bold text-slate-900">@rahul123</p>
-                    <p class="text-[10px] text-slate-400">ID: 100245</p>
-                  </div>
-                </div>
-              </td>
-              <td class="py-3.5 px-3">
-                <p class="font-bold text-slate-900">2,000 T</p>
-                <p class="text-[10px] text-slate-500">₹ 2,000</p>
-              </td>
-              <td class="py-3.5 px-3 font-mono text-slate-600">rahul@okaxis</td>
-              <td class="py-3.5 px-3 text-slate-500">29 Oct 2026, 14:32</td>
-              <td class="py-3.5 px-3">
-                <span class="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">
-                  Pending
-                </span>
-              </td>
-              <td class="py-3.5 px-3 text-right">
-                <div class="flex items-center justify-end gap-1.5">
-                  <button class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[11px] rounded-lg transition shadow-2xs">
-                    Approve
-                  </button>
-                  <button class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-medium text-[11px] rounded-lg transition">
-                    Reject
-                  </button>
-                  <button class="p-1.5 text-slate-400 hover:text-slate-600 ml-1">
-                    <i class="fa-solid fa-ellipsis-vertical"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-
-            <!-- Row 2 -->
-            <tr data-status="pending" class="hover:bg-slate-50/50 transition">
-              <td class="p-4 text-center">
-                <input type="checkbox" class="w-4 h-4 rounded accent-[#6339f9]" />
-              </td>
-              <td class="py-3.5 px-3 font-medium text-slate-900">2</td>
-              <td class="py-3.5 px-3">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-600 text-xs">
-                    P
-                  </div>
-                  <div>
-                    <p class="font-bold text-slate-900">@priya99</p>
-                    <p class="text-[10px] text-slate-400">ID: 100238</p>
-                  </div>
-                </div>
-              </td>
-              <td class="py-3.5 px-3">
-                <p class="font-bold text-slate-900">1,500 T</p>
-                <p class="text-[10px] text-slate-500">₹ 1,500</p>
-              </td>
-              <td class="py-3.5 px-3">
-                <p class="font-medium text-slate-800">HDFC **** 6521</p>
-                <p class="text-[10px] text-slate-400">Priya Sharma</p>
-              </td>
-              <td class="py-3.5 px-3 text-slate-500">29 Oct 2026, 13:10</td>
-              <td class="py-3.5 px-3">
-                <span class="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">
-                  Pending
-                </span>
-              </td>
-              <td class="py-3.5 px-3 text-right">
-                <div class="flex items-center justify-end gap-1.5">
-                  <button class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[11px] rounded-lg transition shadow-2xs">
-                    Approve
-                  </button>
-                  <button class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-medium text-[11px] rounded-lg transition">
-                    Reject
-                  </button>
-                  <button class="p-1.5 text-slate-400 hover:text-slate-600 ml-1">
-                    <i class="fa-solid fa-ellipsis-vertical"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-
-            <!-- Row 3 -->
-            <tr data-status="completed" class="hover:bg-slate-50/50 transition">
-              <td class="p-4 text-center">
-                <input type="checkbox" class="w-4 h-4 rounded accent-[#6339f9]" />
-              </td>
-              <td class="py-3.5 px-3 font-medium text-slate-900">3</td>
-              <td class="py-3.5 px-3">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-600 text-xs">
-                    A
-                  </div>
-                  <div>
-                    <p class="font-bold text-slate-900">@amit_kumar</p>
-                    <p class="text-[10px] text-slate-400">ID: 100221</p>
-                  </div>
-                </div>
-              </td>
-              <td class="py-3.5 px-3">
-                <p class="font-bold text-slate-900">3,000 T</p>
-                <p class="text-[10px] text-slate-500">₹ 3,000</p>
-              </td>
-              <td class="py-3.5 px-3 font-mono text-slate-600">9876543210</td>
-              <td class="py-3.5 px-3 text-slate-500">28 Oct 2026, 20:45</td>
-              <td class="py-3.5 px-3">
-                <span class="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">
-                  Completed
-                </span>
-              </td>
-              <td class="py-3.5 px-3 text-right">
-                <div class="flex items-center justify-end gap-1.5">
-                  <button class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] rounded-lg transition">
-                    View
-                  </button>
-                  <button class="p-1.5 text-slate-400 hover:text-slate-600 ml-1">
-                    <i class="fa-solid fa-ellipsis-vertical"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-
-            <!-- Row 4 -->
-            <tr data-status="completed" class="hover:bg-slate-50/50 transition">
-              <td class="p-4 text-center">
-                <input type="checkbox" class="w-4 h-4 rounded accent-[#6339f9]" />
-              </td>
-              <td class="py-3.5 px-3 font-medium text-slate-900">4</td>
-              <td class="py-3.5 px-3">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-600 text-xs">
-                    N
-                  </div>
-                  <div>
-                    <p class="font-bold text-slate-900">@neha_123</p>
-                    <p class="text-[10px] text-slate-400">ID: 100208</p>
-                  </div>
-                </div>
-              </td>
-              <td class="py-3.5 px-3">
-                <p class="font-bold text-slate-900">2,500 T</p>
-                <p class="text-[10px] text-slate-500">₹ 2,500</p>
-              </td>
-              <td class="py-3.5 px-3 font-mono text-slate-600">neha123@ybl</td>
-              <td class="py-3.5 px-3 text-slate-500">28 Oct 2026, 18:20</td>
-              <td class="py-3.5 px-3">
-                <span class="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">
-                  Completed
-                </span>
-              </td>
-              <td class="py-3.5 px-3 text-right">
-                <div class="flex items-center justify-end gap-1.5">
-                  <button class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] rounded-lg transition">
-                    View
-                  </button>
-                  <button class="p-1.5 text-slate-400 hover:text-slate-600 ml-1">
-                    <i class="fa-solid fa-ellipsis-vertical"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-
-            <!-- Row 5 -->
-            <tr data-status="rejected" class="hover:bg-slate-50/50 transition">
-              <td class="p-4 text-center">
-                <input type="checkbox" class="w-4 h-4 rounded accent-[#6339f9]" />
-              </td>
-              <td class="py-3.5 px-3 font-medium text-slate-900">5</td>
-              <td class="py-3.5 px-3">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-600 text-xs">
-                    R
-                  </div>
-                  <div>
-                    <p class="font-bold text-slate-900">@rohit_tech</p>
-                    <p class="text-[10px] text-slate-400">ID: 100197</p>
-                  </div>
-                </div>
-              </td>
-              <td class="py-3.5 px-3">
-                <p class="font-bold text-slate-900">1,000 T</p>
-                <p class="text-[10px] text-slate-500">₹ 1,000</p>
-              </td>
-              <td class="py-3.5 px-3">
-                <p class="font-medium text-slate-800">SBI **** 4412</p>
-                <p class="text-[10px] text-slate-400">Rohit Kumar</p>
-              </td>
-              <td class="py-3.5 px-3 text-slate-500">27 Oct 2026, 16:12</td>
-              <td class="py-3.5 px-3">
-                <span class="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-700">
-                  Rejected
-                </span>
-              </td>
-              <td class="py-3.5 px-3 text-right">
-                <div class="flex items-center justify-end gap-1.5">
-                  <button class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] rounded-lg transition">
-                    View
-                  </button>
-                  <button class="p-1.5 text-slate-400 hover:text-slate-600 ml-1">
-                    <i class="fa-solid fa-ellipsis-vertical"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-
-            <!-- Row 6 -->
-            <tr data-status="completed" class="hover:bg-slate-50/50 transition">
-              <td class="p-4 text-center">
-                <input type="checkbox" class="w-4 h-4 rounded accent-[#6339f9]" />
-              </td>
-              <td class="py-3.5 px-3 font-medium text-slate-900">6</td>
-              <td class="py-3.5 px-3">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-600 text-xs">
-                    S
-                  </div>
-                  <div>
-                    <p class="font-bold text-slate-900">@sahil_dev</p>
-                    <p class="text-[10px] text-slate-400">ID: 100185</p>
-                  </div>
-                </div>
-              </td>
-              <td class="py-3.5 px-3">
-                <p class="font-bold text-slate-900">5,000 T</p>
-                <p class="text-[10px] text-slate-500">₹ 5,000</p>
-              </td>
-              <td class="py-3.5 px-3 font-mono text-slate-600">sahil@paytm</td>
-              <td class="py-3.5 px-3 text-slate-500">27 Oct 2026, 11:30</td>
-              <td class="py-3.5 px-3">
-                <span class="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">
-                  Completed
-                </span>
-              </td>
-              <td class="py-3.5 px-3 text-right">
-                <div class="flex items-center justify-end gap-1.5">
-                  <button class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] rounded-lg transition">
-                    View
-                  </button>
-                  <button class="p-1.5 text-slate-400 hover:text-slate-600 ml-1">
-                    <i class="fa-solid fa-ellipsis-vertical"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-
-            <!-- Row 7 -->
-            <tr data-status="pending" class="hover:bg-slate-50/50 transition">
-              <td class="p-4 text-center">
-                <input type="checkbox" class="w-4 h-4 rounded accent-[#6339f9]" />
-              </td>
-              <td class="py-3.5 px-3 font-medium text-slate-900">7</td>
-              <td class="py-3.5 px-3">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-600 text-xs">
-                    K
-                  </div>
-                  <div>
-                    <p class="font-bold text-slate-900">@kavya02</p>
-                    <p class="text-[10px] text-slate-400">ID: 100172</p>
-                  </div>
-                </div>
-              </td>
-              <td class="py-3.5 px-3">
-                <p class="font-bold text-slate-900">2,000 T</p>
-                <p class="text-[10px] text-slate-500">₹ 2,000</p>
-              </td>
-              <td class="py-3.5 px-3 font-mono text-slate-600">9123456789</td>
-              <td class="py-3.5 px-3 text-slate-500">26 Oct 2026, 22:10</td>
-              <td class="py-3.5 px-3">
-                <span class="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">
-                  Pending
-                </span>
-              </td>
-              <td class="py-3.5 px-3 text-right">
-                <div class="flex items-center justify-end gap-1.5">
-                  <button class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[11px] rounded-lg transition shadow-2xs">
-                    Approve
-                  </button>
-                  <button class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-medium text-[11px] rounded-lg transition">
-                    Reject
-                  </button>
-                  <button class="p-1.5 text-slate-400 hover:text-slate-600 ml-1">
-                    <i class="fa-solid fa-ellipsis-vertical"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-
-            <!-- Row 8 -->
-            <tr data-status="completed" class="hover:bg-slate-50/50 transition">
-              <td class="p-4 text-center">
-                <input type="checkbox" class="w-4 h-4 rounded accent-[#6339f9]" />
-              </td>
-              <td class="py-3.5 px-3 font-medium text-slate-900">8</td>
-              <td class="py-3.5 px-3">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-600 text-xs">
-                    D
-                  </div>
-                  <div>
-                    <p class="font-bold text-slate-900">@deepak_coder</p>
-                    <p class="text-[10px] text-slate-400">ID: 100168</p>
-                  </div>
-                </div>
-              </td>
-              <td class="py-3.5 px-3">
-                <p class="font-bold text-slate-900">1,500 T</p>
-                <p class="text-[10px] text-slate-500">₹ 1,500</p>
-              </td>
-              <td class="py-3.5 px-3">
-                <p class="font-medium text-slate-800">ICICI **** 9900</p>
-                <p class="text-[10px] text-slate-400">Deepak</p>
-              </td>
-              <td class="py-3.5 px-3 text-slate-500">26 Oct 2026, 19:45</td>
-              <td class="py-3.5 px-3">
-                <span class="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">
-                  Completed
-                </span>
-              </td>
-              <td class="py-3.5 px-3 text-right">
-                <div class="flex items-center justify-end gap-1.5">
-                  <button class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] rounded-lg transition">
-                    View
-                  </button>
-                  <button class="p-1.5 text-slate-400 hover:text-slate-600 ml-1">
-                    <i class="fa-solid fa-ellipsis-vertical"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-
-            <!-- Row 9 -->
-            <tr data-status="pending" class="hover:bg-slate-50/50 transition">
-              <td class="p-4 text-center">
-                <input type="checkbox" class="w-4 h-4 rounded accent-[#6339f9]" />
-              </td>
-              <td class="py-3.5 px-3 font-medium text-slate-900">9</td>
-              <td class="py-3.5 px-3">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-600 text-xs">
-                    V
-                  </div>
-                  <div>
-                    <p class="font-bold text-slate-900">@vijayk</p>
-                    <p class="text-[10px] text-slate-400">ID: 100154</p>
-                  </div>
-                </div>
-              </td>
-              <td class="py-3.5 px-3">
-                <p class="font-bold text-slate-900">3,500 T</p>
-                <p class="text-[10px] text-slate-500">₹ 3,500</p>
-              </td>
-              <td class="py-3.5 px-3 font-mono text-slate-600">vijay@okicici</td>
-              <td class="py-3.5 px-3 text-slate-500">25 Oct 2026, 15:20</td>
-              <td class="py-3.5 px-3">
-                <span class="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">
-                  Pending
-                </span>
-              </td>
-              <td class="py-3.5 px-3 text-right">
-                <div class="flex items-center justify-end gap-1.5">
-                  <button class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[11px] rounded-lg transition shadow-2xs">
-                    Approve
-                  </button>
-                  <button class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-medium text-[11px] rounded-lg transition">
-                    Reject
-                  </button>
-                  <button class="p-1.5 text-slate-400 hover:text-slate-600 ml-1">
-                    <i class="fa-solid fa-ellipsis-vertical"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-
-            <!-- Row 10 -->
-            <tr data-status="rejected" class="hover:bg-slate-50/50 transition">
-              <td class="p-4 text-center">
-                <input type="checkbox" class="w-4 h-4 rounded accent-[#6339f9]" />
-              </td>
-              <td class="py-3.5 px-3 font-medium text-slate-900">10</td>
-              <td class="py-3.5 px-3">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-600 text-xs">
-                    S
-                  </div>
-                  <div>
-                    <p class="font-bold text-slate-900">@simran_0 7</p>
-                    <p class="text-[10px] text-slate-400">ID: 100149</p>
-                  </div>
-                </div>
-              </td>
-              <td class="py-3.5 px-3">
-                <p class="font-bold text-slate-900">2,000 T</p>
-                <p class="text-[10px] text-slate-500">₹ 2,000</p>
-              </td>
-              <td class="py-3.5 px-3 font-mono text-slate-600">9988776555</td>
-              <td class="py-3.5 px-3 text-slate-500">25 Oct 2026, 12:05</td>
-              <td class="py-3.5 px-3">
-                <span class="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-700">
-                  Rejected
-                </span>
-              </td>
-              <td class="py-3.5 px-3 text-right">
-                <div class="flex items-center justify-end gap-1.5">
-                  <button class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] rounded-lg transition">
-                    View
-                  </button>
-                  <button class="p-1.5 text-slate-400 hover:text-slate-600 ml-1">
-                    <i class="fa-solid fa-ellipsis-vertical"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-
+            <?php if ($loadError !== null): ?>
+              <tr>
+                <td colspan="8" class="py-10 px-4 text-center text-rose-600 font-medium">
+                  <i class="fa-solid fa-triangle-exclamation mr-2"></i><?= e($loadError) ?>
+                </td>
+              </tr>
+            <?php elseif ($withdrawals === []): ?>
+              <tr>
+                <td colspan="8" class="py-10 px-4 text-center text-slate-500 font-medium">
+                  <i class="fa-regular fa-folder-open mr-2"></i>No withdrawals found for this filter.
+                </td>
+              </tr>
+            <?php else: ?>
+              <?php foreach ($withdrawals as $i => $w): ?>
+                <?php
+                  [$badgeClass, $badgeLabel] = status_badge((string) $w['status']);
+                  [$detailPrimary, $detailSecondary] = payout_details($w);
+                  $initial = strtoupper(substr((string) ($w['username'] ?? 'U'), 0, 1));
+                  $isPending = in_array($w['status'], ['pending', 'processing'], true);
+                ?>
+                <tr data-status="<?= e($w['status']) ?>" class="hover:bg-slate-50/50 transition">
+                  <td class="p-4 text-center">
+                    <input type="checkbox" class="w-4 h-4 rounded accent-[#6339f9]" value="<?= (int) $w['id'] ?>" />
+                  </td>
+                  <td class="py-3.5 px-3 font-medium text-slate-900"><?= $i + 1 ?></td>
+                  <td class="py-3.5 px-3">
+                    <div class="flex items-center gap-2.5">
+                      <div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-600 text-xs">
+                        <?= e($initial) ?>
+                      </div>
+                      <div>
+                        <p class="font-bold text-slate-900">@<?= e($w['username'] ?? 'unknown') ?></p>
+                        <p class="text-[10px] text-slate-400">ID: <?= e($w['telegram_id'] ?? '—') ?></p>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="py-3.5 px-3">
+                    <p class="font-bold text-slate-900"><?= e(t_format($w['amount_t'])) ?></p>
+                    <p class="text-[10px] text-slate-500"><?= e(inr_format($w['amount_inr'])) ?></p>
+                  </td>
+                  <td class="py-3.5 px-3 <?= $detailSecondary === '' ? 'font-mono text-slate-600' : '' ?>">
+                    <p class="font-medium text-slate-800"><?= e($detailPrimary) ?></p>
+                    <?php if ($detailSecondary !== ''): ?>
+                      <p class="text-[10px] text-slate-400"><?= e($detailSecondary) ?></p>
+                    <?php endif; ?>
+                  </td>
+                  <td class="py-3.5 px-3 text-slate-500"><?= e(date('d M Y, H:i', strtotime((string) $w['requested_at']))) ?></td>
+                  <td class="py-3.5 px-3">
+                    <span class="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold <?= e($badgeClass) ?>">
+                      <?= e($badgeLabel) ?>
+                    </span>
+                  </td>
+                  <td class="py-3.5 px-3 text-right">
+                    <div class="flex items-center justify-end gap-1.5">
+                      <?php if ($isPending): ?>
+                        <form method="post" action="withdrawal_action.php" class="inline">
+                          <?= csrf_field() ?>
+                          <input type="hidden" name="id" value="<?= (int) $w['id'] ?>" />
+                          <input type="hidden" name="action" value="approve" />
+                          <button type="submit" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[11px] rounded-lg transition shadow-2xs">
+                            Approve
+                          </button>
+                        </form>
+                        <form method="post" action="withdrawal_action.php" class="inline">
+                          <?= csrf_field() ?>
+                          <input type="hidden" name="id" value="<?= (int) $w['id'] ?>" />
+                          <input type="hidden" name="action" value="reject" />
+                          <button type="submit" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-medium text-[11px] rounded-lg transition">
+                            Reject
+                          </button>
+                        </form>
+                      <?php else: ?>
+                        <button type="button" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] rounded-lg transition">
+                          View
+                        </button>
+                      <?php endif; ?>
+                      <button type="button" class="p-1.5 text-slate-400 hover:text-slate-600 ml-1">
+                        <i class="fa-solid fa-ellipsis-vertical"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            <?php endif; ?>
           </tbody>
         </table>
       </div>
 
       <!-- Pagination Footer -->
       <div class="p-4 sm:p-5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-        <p id="pagination-summary" class="text-xs text-slate-500">Showing 1 to 10 of 428 withdrawals</p>
-        
+        <p id="pagination-summary" class="text-xs text-slate-500">
+          Showing <?= count($withdrawals) ?> of <?= number_format($totalRows) ?> withdrawals
+        </p>
+
+        <?php
+          $pageUrl = static function (int $target) use ($statusFilter, $search, $perPage): string {
+              $query = ['status' => $statusFilter, 'page' => $target, 'per' => $perPage];
+              if ($search !== '') {
+                  $query['q'] = $search;
+              }
+              return '?' . http_build_query($query);
+          };
+          $windowStart = max(1, $page - 2);
+          $windowEnd   = min($totalPages, $windowStart + 4);
+          $windowStart = max(1, $windowEnd - 4);
+        ?>
+
         <div class="flex items-center gap-1.5">
-          <button class="w-8 h-8 rounded-xl border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center text-xs transition">
-            <i class="fa-solid fa-chevron-left"></i>
-          </button>
-          <button class="w-8 h-8 rounded-xl bg-[#6339f9] text-white font-semibold flex items-center justify-center text-xs shadow-2xs">
-            1
-          </button>
-          <button class="w-8 h-8 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center text-xs transition">
-            2
-          </button>
-          <button class="w-8 h-8 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center text-xs transition">
-            3
-          </button>
-          <button class="w-8 h-8 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center text-xs transition">
-            4
-          </button>
-          <button class="w-8 h-8 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center text-xs transition">
-            5
-          </button>
-          <span class="px-1 text-slate-400">...</span>
-          <button class="w-8 h-8 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center text-xs transition">
-            43
-          </button>
-          <button class="w-8 h-8 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center text-xs transition">
-            <i class="fa-solid fa-chevron-right"></i>
-          </button>
+          <?php if ($page > 1): ?>
+            <a href="<?= e($pageUrl($page - 1)) ?>" class="w-8 h-8 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center text-xs transition">
+              <i class="fa-solid fa-chevron-left"></i>
+            </a>
+          <?php else: ?>
+            <span class="w-8 h-8 rounded-xl border border-slate-200 text-slate-300 flex items-center justify-center text-xs">
+              <i class="fa-solid fa-chevron-left"></i>
+            </span>
+          <?php endif; ?>
+
+          <?php for ($p = $windowStart; $p <= $windowEnd; $p++): ?>
+            <?php if ($p === $page): ?>
+              <span class="w-8 h-8 rounded-xl bg-[#6339f9] text-white font-semibold flex items-center justify-center text-xs shadow-2xs"><?= $p ?></span>
+            <?php else: ?>
+              <a href="<?= e($pageUrl($p)) ?>" class="w-8 h-8 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center text-xs transition"><?= $p ?></a>
+            <?php endif; ?>
+          <?php endfor; ?>
+
+          <?php if ($page < $totalPages): ?>
+            <a href="<?= e($pageUrl($page + 1)) ?>" class="w-8 h-8 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center text-xs transition">
+              <i class="fa-solid fa-chevron-right"></i>
+            </a>
+          <?php else: ?>
+            <span class="w-8 h-8 rounded-xl border border-slate-200 text-slate-300 flex items-center justify-center text-xs">
+              <i class="fa-solid fa-chevron-right"></i>
+            </span>
+          <?php endif; ?>
         </div>
 
-        <div class="flex items-center gap-2">
-          <select class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none">
-            <option>10 per page</option>
-            <option>25 per page</option>
-            <option>50 per page</option>
+        <form method="get" class="flex items-center gap-2">
+          <input type="hidden" name="status" value="<?= e($statusFilter) ?>" />
+          <?php if ($search !== ''): ?>
+            <input type="hidden" name="q" value="<?= e($search) ?>" />
+          <?php endif; ?>
+          <select name="per" onchange="this.form.submit()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none">
+            <?php foreach ([10, 25, 50] as $option): ?>
+              <option value="<?= $option ?>" <?= $perPage === $option ? 'selected' : '' ?>><?= $option ?> per page</option>
+            <?php endforeach; ?>
           </select>
-        </div>
+        </form>
       </div>
     </section>
 
@@ -694,46 +543,6 @@
       sidebar.classList.toggle('-translate-x-full');
       backdrop.classList.toggle('hidden');
     }
-
-    // Filter tabs
-    const tabButtons = document.querySelectorAll('#filter-tabs .tab-btn');
-    const rows = document.querySelectorAll('tbody tr[data-status]');
-    const summary = document.querySelector('#pagination-summary');
-
-    function applyFilter(filter) {
-      let visible = 0;
-      rows.forEach((row) => {
-        const match = filter === 'all' || row.dataset.status === filter;
-        row.classList.toggle('hidden', !match);
-        if (match) visible++;
-      });
-
-      tabButtons.forEach((btn) => {
-        const active = btn.dataset.filter === filter;
-        btn.classList.toggle('bg-[#6339f9]', active);
-        btn.classList.toggle('text-white', active);
-        btn.classList.toggle('shadow-2xs', active);
-        btn.classList.toggle('hover:text-slate-900', !active);
-        btn.setAttribute('aria-selected', active ? 'true' : 'false');
-      });
-
-      if (summary) {
-        const total = btnCount(filter);
-        summary.textContent = `Showing 1 to ${visible} of ${total} withdrawals`;
-      }
-    }
-
-    function btnCount(filter) {
-      const btn = document.querySelector(`#filter-tabs .tab-btn[data-filter="${filter}"]`);
-      const match = btn && btn.textContent.match(/\((\d+)\)/);
-      return match ? match[1] : rows.length;
-    }
-
-    tabButtons.forEach((btn) => {
-      btn.addEventListener('click', () => applyFilter(btn.dataset.filter));
-    });
-
-    applyFilter('all');
   </script>
 </body>
 </html>

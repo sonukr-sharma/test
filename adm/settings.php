@@ -1,3 +1,112 @@
+<?php
+/**
+ * Admin — Platform settings
+ */
+declare(strict_types=1);
+
+require_once __DIR__ . '/../config.php';
+
+$admin = require_admin();
+
+$saved = false;
+$error = null;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!csrf_verify($_POST['csrf_token'] ?? null)) {
+        $error = 'Your session expired. Please try again.';
+    } else {
+        // key => [data_type, cast]
+        $fields = [
+            'referral_reward_t'            => 'decimal',
+            'min_referrals_withdrawal'     => 'integer',
+            'min_withdrawal_t'             => 'decimal',
+            'max_withdrawal_t'             => 'decimal',
+            'auto_approve_withdrawals'     => 'boolean',
+            'withdrawal_api_url'           => 'url',
+            'coin_to_inr_rate'             => 'decimal',
+            'bot_token'                    => 'secret',
+            'bot_web_app_url'              => 'url',
+            'signup_bonus_t'               => 'decimal',
+            'enable_signup_bonus'          => 'boolean',
+            'allow_registration'           => 'boolean',
+            'withdrawals_enabled'          => 'boolean',
+            'withdrawal_processing_hours'  => 'integer',
+        ];
+
+        try {
+            $pdo = db();
+            $pdo->beginTransaction();
+
+            $stmt = $pdo->prepare(
+                'INSERT INTO `settings` (`key`, `value`, `data_type`, `group_name`, `updated_by`)
+                 VALUES (:key, :value, :type, :grp, :admin)
+                 ON DUPLICATE KEY UPDATE
+                    `value` = VALUES(`value`),
+                    `updated_by` = VALUES(`updated_by`)'
+            );
+
+            $groups = [
+                'referral'   => ['referral_reward_t', 'min_referrals_withdrawal'],
+                'withdrawal' => ['min_withdrawal_t', 'max_withdrawal_t', 'auto_approve_withdrawals',
+                                 'withdrawal_api_url', 'coin_to_inr_rate', 'withdrawal_processing_hours'],
+                'bot'        => ['bot_token', 'bot_web_app_url'],
+                'bonus'      => ['signup_bonus_t', 'enable_signup_bonus'],
+                'platform'   => ['allow_registration', 'withdrawals_enabled'],
+            ];
+
+            foreach ($fields as $key => $type) {
+                if ($type === 'boolean') {
+                    $value = !empty($_POST[$key]) ? '1' : '0';
+                } else {
+                    // Skip fields that are not rendered on the page so we never blank them out.
+                    if (!array_key_exists($key, $_POST)) {
+                        continue;
+                    }
+                    $value = trim((string) $_POST[$key]);
+                }
+
+                $group = 'general';
+                foreach ($groups as $groupName => $keys) {
+                    if (in_array($key, $keys, true)) {
+                        $group = $groupName;
+                        break;
+                    }
+                }
+
+                $stmt->execute([
+                    ':key'   => $key,
+                    ':value' => $value,
+                    ':type'  => $type,
+                    ':grp'   => $group,
+                    ':admin' => $admin['id'],
+                ]);
+            }
+
+            $audit = $pdo->prepare(
+                'INSERT INTO `audit_logs` (`admin_id`, `action`, `entity_type`, `ip_address`)
+                 VALUES (:admin, :action, :entity_type, :ip)'
+            );
+            $audit->execute([
+                ':admin'       => $admin['id'],
+                ':action'      => 'settings.update',
+                ':entity_type' => 'settings',
+                ':ip'          => $_SERVER['REMOTE_ADDR'] ?? null,
+            ]);
+
+            $pdo->commit();
+            $saved = true;
+        } catch (Throwable $e) {
+            if (isset($pdo) && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            error_log('Settings save failed: ' . $e->getMessage());
+            $error = APP_DEBUG ? $e->getMessage() : 'Unable to save settings right now.';
+        }
+    }
+}
+
+$s = settings();
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -85,7 +194,36 @@
           <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Configure your Refer & Earn platform settings and view key statistics.</p>
         </div>
       </div>
+
+      <!-- Signed-in admin -->
+      <div class="flex items-center gap-3 shrink-0">
+        <div class="hidden sm:block text-right">
+          <p class="text-xs font-semibold text-slate-900"><?= e($admin['name']) ?></p>
+          <p class="text-[11px] text-slate-500"><?= e(ucwords(str_replace('_', ' ', (string) $admin['role']))) ?></p>
+        </div>
+        <div class="w-9 h-9 rounded-full bg-gradient-to-br from-[#6c3cf7] to-[#5a29e4] text-white flex items-center justify-center font-bold text-sm shrink-0">
+          <?= e(strtoupper(substr((string) $admin['name'], 0, 1))) ?>
+        </div>
+        <a href="logout.php" title="Sign out" class="w-9 h-9 rounded-xl border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 flex items-center justify-center transition">
+          <i class="fa-solid fa-arrow-right-from-bracket text-xs"></i>
+        </a>
+      </div>
     </header>
+
+    <?php if ($saved): ?>
+      <div class="mb-5 flex items-start gap-2.5 rounded-xl px-4 py-3 text-xs font-medium bg-emerald-50 border border-emerald-200 text-emerald-700">
+        <i class="fa-solid fa-circle-check mt-0.5 shrink-0"></i>
+        <span>Settings saved successfully.</span>
+      </div>
+    <?php elseif ($error !== null): ?>
+      <div class="mb-5 flex items-start gap-2.5 rounded-xl px-4 py-3 text-xs font-medium bg-rose-50 border border-rose-200 text-rose-700">
+        <i class="fa-solid fa-circle-exclamation mt-0.5 shrink-0"></i>
+        <span><?= e($error) ?></span>
+      </div>
+    <?php endif; ?>
+
+    <form method="post" action="" class="contents">
+      <?= csrf_field() ?>
 
     <!-- Main Settings Grid (6 Cards) -->
     <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
@@ -107,17 +245,17 @@
           <!-- Fields -->
           <div class="space-y-4">
             <div>
-              <label class="block text-xs font-medium text-slate-700 mb-1.5">Reward per Referral (₹)</label>
+              <label class="block text-xs font-medium text-slate-700 mb-1.5">Reward per Referral (T)</label>
               <div class="flex rounded-lg border border-slate-200 overflow-hidden bg-slate-50/40 focus-within:border-indigo-500">
-                <input type="text" value="150" class="w-full px-3.5 py-2 text-sm text-slate-800 bg-white focus:outline-none" />
-                              <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">₹</span>
+                <input type="text" name="referral_reward_t" value="<?= e(number_format((float) $s['referral_reward_t'], 0, '', '')) ?>" class="w-full px-3.5 py-2 text-sm text-slate-800 bg-white focus:outline-none" />
+                              <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">T</span>
               </div>
             </div>
 
                         <div>
                           <label class="block text-xs font-medium text-slate-700 mb-1.5">Minimum Referrals per Withdrawal</label>
                           <div class="flex rounded-lg border border-slate-200 overflow-hidden bg-slate-50/40 focus-within:border-indigo-500">
-                            <input type="text" value="5" class="w-full px-3.5 py-2 text-sm text-slate-800 bg-white focus:outline-none" />
+                            <input type="text" name="min_referrals_withdrawal" value="<?= e((string) $s['min_referrals_withdrawal']) ?>" class="w-full px-3.5 py-2 text-sm text-slate-800 bg-white focus:outline-none" />
                             <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">refs</span>
                           </div>
                         </div>
@@ -150,20 +288,36 @@
           <!-- Fields -->
           <div class="space-y-4">
             <div>
-              <label class="block text-xs font-medium text-slate-700 mb-1.5">Minimum Withdrawal Amount (₹)</label>
+              <label class="block text-xs font-medium text-slate-700 mb-1.5">Minimum Withdrawal Amount (T)</label>
               <div class="flex rounded-lg border border-slate-200 overflow-hidden focus-within:border-indigo-500">
-                <input type="text" value="2,000" class="w-full px-3.5 py-2 text-sm text-slate-800 bg-white focus:outline-none" />
-                              <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">₹</span>
+                <input type="text" name="min_withdrawal_t" value="<?= e(number_format((float) $s['min_withdrawal_t'], 0, '', '')) ?>" class="w-full px-3.5 py-2 text-sm text-slate-800 bg-white focus:outline-none" />
+                              <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">T</span>
               </div>
             </div>
 
             <div>
-                          <label class="block text-xs font-medium text-slate-700 mb-1.5">Maximum Withdrawal Amount (₹)</label>
+                          <label class="block text-xs font-medium text-slate-700 mb-1.5">Maximum Withdrawal Amount (T)</label>
                           <div class="flex rounded-lg border border-slate-200 overflow-hidden focus-within:border-indigo-500">
-                            <input type="text" value="50,000" class="w-full px-3.5 py-2 text-sm text-slate-800 bg-white focus:outline-none" />
-                                                      <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">₹</span>
+                            <input type="text" name="max_withdrawal_t" value="<?= e(number_format((float) $s['max_withdrawal_t'], 0, '', '')) ?>" class="w-full px-3.5 py-2 text-sm text-slate-800 bg-white focus:outline-none" />
+                                                      <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">T</span>
                           </div>
                         </div>
+
+            <div>
+              <label class="block text-xs font-medium text-slate-700 mb-1.5">Conversion Rate (₹ per 1 T)</label>
+              <div class="flex rounded-lg border border-slate-200 overflow-hidden focus-within:border-indigo-500">
+                <input type="text" name="coin_to_inr_rate" value="<?= e((string) $s['coin_to_inr_rate']) ?>" class="w-full px-3.5 py-2 text-sm text-slate-800 bg-white focus:outline-none" />
+                <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">₹</span>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-slate-700 mb-1.5">Processing Time Shown to Users (hours)</label>
+              <div class="flex rounded-lg border border-slate-200 overflow-hidden focus-within:border-indigo-500">
+                <input type="text" name="withdrawal_processing_hours" value="<?= e((string) $s['withdrawal_processing_hours']) ?>" class="w-full px-3.5 py-2 text-sm text-slate-800 bg-white focus:outline-none" />
+                <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">hrs</span>
+              </div>
+            </div>
                       </div>
         </div>
 
@@ -172,7 +326,7 @@
           <div class="flex items-center justify-between gap-2">
             <span class="text-xs font-medium text-slate-800">Auto Approve Withdrawals</span>
             <label class="relative inline-flex items-center cursor-pointer shrink-0">
-              <input type="checkbox" class="sr-only peer">
+              <input type="checkbox" name="auto_approve_withdrawals" value="1" <?= !empty($s['auto_approve_withdrawals']) ? 'checked' : '' ?> class="sr-only peer">
               <div class="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6339f9]"></div>
             </label>
           </div>
@@ -199,7 +353,7 @@
                   <div>
                     <label class="block text-xs font-medium text-slate-700 mb-1">Withdrawal API URL</label>
                     <div class="flex items-center rounded-lg border border-slate-200 bg-slate-50/70 overflow-hidden focus-within:border-indigo-500">
-                      <input type="text" value="https://yourdomain.com/api/withdraw" class="w-full px-3.5 py-2 text-xs text-slate-600 bg-transparent focus:outline-none min-w-0" />
+                      <input type="text" name="withdrawal_api_url" value="<?= e((string) $s['withdrawal_api_url']) ?>" class="w-full px-3.5 py-2 text-xs text-slate-600 bg-transparent focus:outline-none min-w-0" />
                       <button class="px-3 py-2 text-slate-400 hover:text-slate-600 shrink-0">
                         <i class="fa-regular fa-copy text-xs"></i>
                       </button>
@@ -238,7 +392,7 @@
                   <div>
                     <label class="block text-xs font-medium text-slate-700 mb-1">Bot Token</label>
                     <div class="flex items-center rounded-lg border border-slate-200 bg-slate-50/70 overflow-hidden focus-within:border-indigo-500">
-                      <input type="password" value="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" class="w-full px-3.5 py-2 text-xs text-slate-600 bg-transparent focus:outline-none min-w-0" />
+                      <input type="password" name="bot_token" value="<?= e((string) $s['bot_token']) ?>" class="w-full px-3.5 py-2 text-xs text-slate-600 bg-transparent focus:outline-none min-w-0" />
                       <button class="px-3 py-2 text-slate-400 hover:text-slate-600 shrink-0">
                         <i class="fa-regular fa-eye text-xs"></i>
                       </button>
@@ -248,7 +402,7 @@
                   <div>
                     <label class="block text-xs font-medium text-slate-700 mb-1">Bot Web App URL</label>
                     <div class="flex items-center rounded-lg border border-slate-200 bg-slate-50/70 overflow-hidden focus-within:border-indigo-500">
-                      <input id="botWebAppUrl" type="text" readonly class="w-full px-3.5 py-2 text-xs text-slate-600 bg-transparent focus:outline-none min-w-0" />
+                      <input id="botWebAppUrl" name="bot_web_app_url" type="text" value="<?= e((string) $s['bot_web_app_url']) ?>" class="w-full px-3.5 py-2 text-xs text-slate-600 bg-transparent focus:outline-none min-w-0" />
                       <button class="px-3 py-2 text-slate-400 hover:text-slate-600 shrink-0">
                         <i class="fa-regular fa-copy text-xs"></i>
                       </button>
@@ -275,10 +429,10 @@
                 <!-- Fields -->
                 <div class="space-y-3.5">
                   <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Signup Bonus (₹)</label>
+                    <label class="block text-xs font-medium text-slate-700 mb-1">Signup Bonus (T)</label>
                     <div class="flex rounded-lg border border-slate-200 overflow-hidden focus-within:border-indigo-500">
-                      <input type="text" value="50" class="w-full px-3.5 py-1.5 text-sm text-slate-800 bg-white focus:outline-none" />
-                      <span class="px-3.5 py-1.5 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">₹</span>
+                      <input type="text" name="signup_bonus_t" value="<?= e(number_format((float) $s['signup_bonus_t'], 0, '', '')) ?>" class="w-full px-3.5 py-1.5 text-sm text-slate-800 bg-white focus:outline-none" />
+                      <span class="px-3.5 py-1.5 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">T</span>
                     </div>
                   </div>
                 </div>
@@ -289,7 +443,7 @@
                 <div class="flex items-center justify-between gap-2">
                   <span class="text-xs font-medium text-slate-700">Enable Signup Bonus</span>
                   <label class="relative inline-flex items-center cursor-pointer shrink-0">
-                    <input type="checkbox" checked class="sr-only peer">
+                    <input type="checkbox" name="enable_signup_bonus" value="1" <?= !empty($s['enable_signup_bonus']) ? 'checked' : '' ?> class="sr-only peer">
                     <div class="w-10 h-5 bg-slate-200 rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6339f9]"></div>
                   </label>
                 </div>
@@ -315,7 +469,7 @@
                   <div class="flex items-center justify-between gap-2">
                     <span class="text-xs font-medium text-slate-800">Allow New User Registration</span>
                     <label class="relative inline-flex items-center cursor-pointer shrink-0">
-                      <input type="checkbox" checked class="sr-only peer">
+                      <input type="checkbox" name="allow_registration" value="1" <?= !empty($s['allow_registration']) ? 'checked' : '' ?> class="sr-only peer">
                       <div class="w-10 h-5 bg-slate-300 rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6339f9]"></div>
                     </label>
                   </div>
@@ -323,7 +477,7 @@
                   <div class="flex items-center justify-between gap-2">
                     <span class="text-xs font-medium text-slate-800">Withdrawals</span>
                     <label class="relative inline-flex items-center cursor-pointer shrink-0">
-                      <input type="checkbox" checked class="sr-only peer">
+                      <input type="checkbox" name="withdrawals_enabled" value="1" <?= !empty($s['withdrawals_enabled']) ? 'checked' : '' ?> class="sr-only peer">
                       <div class="w-10 h-5 bg-slate-300 rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6339f9]"></div>
                     </label>
                   </div>
@@ -332,7 +486,7 @@
 
               <!-- Save Changes Button -->
               <div class="mt-5 flex justify-end">
-                <button class="w-full sm:w-auto justify-center bg-gradient-to-r from-[#6c3cf7] to-[#5a29e4] hover:opacity-95 text-white font-medium text-xs px-5 py-3 sm:py-2.5 rounded-xl shadow-md shadow-indigo-500/25 flex items-center gap-2 transition">
+                <button type="submit" class="w-full sm:w-auto justify-center bg-gradient-to-r from-[#6c3cf7] to-[#5a29e4] hover:opacity-95 text-white font-medium text-xs px-5 py-3 sm:py-2.5 rounded-xl shadow-md shadow-indigo-500/25 flex items-center gap-2 transition">
                   <i class="fa-solid fa-floppy-disk"></i>
                   <span>Save Changes</span>
                 </button>
@@ -340,6 +494,7 @@
             </div>
 
           </section>
+    </form>
   </main>
 
   <script>
@@ -361,9 +516,9 @@
       backdrop.classList.toggle('hidden');
     }
 
-        // Auto-fetch current domain for the Bot Web App URL
+        // Auto-fill the Bot Web App URL from the current origin when empty
         const webAppUrlInput = document.getElementById('botWebAppUrl');
-        if (webAppUrlInput) {
+        if (webAppUrlInput && !webAppUrlInput.value) {
           webAppUrlInput.value = window.location.origin;
         }
       </script>

@@ -335,9 +335,10 @@ SELECT
   COUNT(*)                        AS `total_broadcasts`,
   COALESCE(SUM(`total_recipients`), 0) AS `total_recipients`,
   COALESCE(SUM(`delivered_count`), 0)  AS `delivered_count`,
-  COALESCE(SUM(`failed_count`), 0)     AS `failed_count`
-FROM `broadcasts`
-WHERE `status` = 'sent';
+  COALESCE(SUM(`failed_count`), 0)     AS `failed_count`,
+  COALESCE(SUM(`status` = 'sent'), 0)  AS `sent_broadcasts`,
+  COALESCE(SUM(`status` = 'draft'), 0) AS `draft_broadcasts`
+FROM `broadcasts`;
 
 -- =====================================================================
 -- 10. SEED DATA
@@ -346,7 +347,7 @@ WHERE `status` = 'sent';
 -- Default admin — password is "admin123" (bcrypt). CHANGE IT AFTER IMPORT.
 INSERT INTO `admins` (`name`, `username`, `email`, `password_hash`, `role`) VALUES
   ('Super Admin', 'admin', 'admin@referearn.com',
-   '$2y$10$e0NRzP0Yl6bJm2s0hKQ0IuYQ8m2r0kQ0IuYQ8m2r0kQ0IuYQ8m2r0', 'super_admin');
+   '$2y$10$9mHnk/bpG4ixmPu/NOuexOKFw64CC5FMEgpy7YIaArobClamRX9L.', 'super_admin');
 
 -- Settings mirrored from adm/settings.php
 INSERT INTO `settings` (`key`, `value`, `data_type`, `group_name`, `label`) VALUES

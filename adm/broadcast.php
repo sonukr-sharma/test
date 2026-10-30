@@ -1,3 +1,57 @@
+<?php
+/**
+ * Admin — Broadcast dashboard
+ */
+declare(strict_types=1);
+
+require_once __DIR__ . '/../config.php';
+
+$admin = require_admin();
+
+$stats = [
+    'total_broadcasts' => 0,
+    'total_recipients' => 0,
+    'delivered_count'  => 0,
+    'failed_count'     => 0,
+];
+
+$history   = [];
+$loadError = null;
+
+try {
+    $stats = array_merge($stats, db()->query('SELECT * FROM `v_broadcast_stats`')->fetch() ?: []);
+
+    $history = db()->query(
+        'SELECT `id`, `title`, `media_type`, `audience`, `status`,
+                `total_recipients`, `delivered_count`, `failed_count`, `sent_at`
+           FROM `broadcasts`
+          ORDER BY COALESCE(`sent_at`, `created_at`) DESC
+          LIMIT 20'
+    )->fetchAll();
+} catch (Throwable $e) {
+    error_log('Broadcast load failed: ' . $e->getMessage());
+    $loadError = APP_DEBUG ? $e->getMessage() : 'Unable to load broadcasts right now.';
+}
+
+$totalRecipients = (int) $stats['total_recipients'];
+$delivered       = (int) $stats['delivered_count'];
+$failed          = (int) $stats['failed_count'];
+$deliveredPct    = $totalRecipients > 0 ? round($delivered / $totalRecipients * 100, 1) : 0.0;
+$failedPct       = $totalRecipients > 0 ? round($failed / $totalRecipients * 100, 1) : 0.0;
+
+$flash = $_SESSION['admin_flash'] ?? null;
+unset($_SESSION['admin_flash']);
+
+function broadcast_icon(string $mediaType): array
+{
+    return match ($mediaType) {
+        'image' => ['bg-[#e8f3ff] text-[#2563eb]', 'fa-image'],
+        'video' => ['bg-[#fff0f3] text-[#e11d48]', 'fa-video'],
+        'file'  => ['bg-[#f2edff] text-[#6d37f7]', 'fa-file'],
+        default => ['bg-[#fff3e6] text-amber-600', 'fa-paper-plane'],
+    };
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -134,7 +188,28 @@
             <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Send messages to all or selected users via Telegram.</p>
           </div>
         </div>
+
+        <!-- Signed-in admin -->
+        <div class="flex items-center gap-3 shrink-0">
+          <div class="hidden sm:block text-right">
+            <p class="text-xs font-semibold text-slate-900"><?= e($admin['name']) ?></p>
+            <p class="text-[11px] text-slate-500"><?= e(ucwords(str_replace('_', ' ', (string) $admin['role']))) ?></p>
+          </div>
+          <div class="w-9 h-9 rounded-full bg-gradient-to-br from-[#6c3cf7] to-[#5a29e4] text-white flex items-center justify-center font-bold text-sm shrink-0">
+            <?= e(strtoupper(substr((string) $admin['name'], 0, 1))) ?>
+          </div>
+          <a href="logout.php" title="Sign out" class="w-9 h-9 rounded-xl border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 flex items-center justify-center transition">
+            <i class="fa-solid fa-arrow-right-from-bracket text-xs"></i>
+          </a>
+        </div>
       </header>
+
+      <?php if ($flash !== null): ?>
+        <div class="mb-5 flex items-start gap-2.5 rounded-xl px-4 py-3 text-xs font-medium border <?= $flash['type'] === 'error' ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700' ?>">
+          <i class="fa-solid <?= $flash['type'] === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check' ?> mt-0.5 shrink-0"></i>
+          <span><?= e($flash['message']) ?></span>
+        </div>
+      <?php endif; ?>
       <!-- Top KPI Cards Row -->
       <section class="grid grid-cols-2 xl:grid-cols-4 gap-2.5 sm:gap-5 mb-6">
         <!-- Total Broadcasts -->
@@ -144,12 +219,8 @@
           </div>
           <div class="min-w-0">
             <p class="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Total Broadcasts</p>
-            <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5">28</p>
-            <div class="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-emerald-600 mt-1">
-              <i class="fa-solid fa-arrow-up text-[10px]"></i>
-              <span>12%</span>
-            </div>
-            <p class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5">+3 this month</p>
+            <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5"><?= number_format((int) $stats['total_broadcasts']) ?></p>
+            <p class="text-[10px] sm:text-[11px] text-slate-500 mt-1">All time</p>
           </div>
         </div>
         <!-- Total Recipients -->
@@ -159,12 +230,8 @@
           </div>
           <div class="min-w-0">
             <p class="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Total Recipients</p>
-            <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5">12,458</p>
-            <div class="flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-emerald-600 mt-1">
-              <i class="fa-solid fa-arrow-up text-[10px]"></i>
-              <span>18%</span>
-            </div>
-            <p class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5">+1,894 this month</p>
+            <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5"><?= number_format($totalRecipients) ?></p>
+            <p class="text-[10px] sm:text-[11px] text-slate-500 mt-1">Across all broadcasts</p>
           </div>
         </div>
         <!-- Delivered -->
@@ -176,8 +243,8 @@
           </div>
           <div class="min-w-0">
             <p class="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Delivered</p>
-            <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5">11,982</p>
-            <p class="text-[10px] sm:text-xs font-medium text-slate-500 mt-1">96.2%</p>
+            <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5"><?= number_format($delivered) ?></p>
+            <p class="text-[10px] sm:text-xs font-medium text-slate-500 mt-1"><?= e($deliveredPct) ?>%</p>
           </div>
         </div>
         <!-- Failed -->
@@ -189,15 +256,19 @@
           </div>
           <div class="min-w-0">
             <p class="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Failed</p>
-            <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5">476</p>
-            <p class="text-[10px] sm:text-xs font-medium text-slate-500 mt-1">3.8%</p>
+            <p class="text-lg sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5"><?= number_format($failed) ?></p>
+            <p class="text-[10px] sm:text-xs font-medium text-slate-500 mt-1"><?= e($failedPct) ?>%</p>
           </div>
         </div>
       </section>
       <!-- Main 3-Column Broadcast Layout -->
       <section class="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 items-stretch">
         <!-- Column 1: Send Broadcast (4 Cols on XL, 6 on LG) -->
-        <div class="lg:col-span-6 xl:col-span-4 bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 flex flex-col justify-between">
+        <form id="broadcastForm" method="post" action="broadcast_send.php" class="lg:col-span-6 xl:col-span-4 bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 flex flex-col justify-between">
+          <?= csrf_field() ?>
+          <input type="hidden" name="media_type" id="mediaTypeInput" value="text" />
+          <input type="hidden" name="message_text" id="messageTextInput" value="" />
+          <input type="hidden" name="buttons" id="buttonsInput" value="[]" />
           <div>
             <!-- Card Header -->
             <div class="flex items-center gap-3.5 mb-5">
@@ -491,18 +562,27 @@
               <p class="text-[10px] text-slate-500 mt-2">You can also use emojis and line breaks.</p>
             </div>
           </div>
+          <!-- Audience -->
+          <div class="mt-4">
+            <label for="audienceSelect" class="block text-xs font-bold text-slate-800 mb-2">Audience</label>
+            <select id="audienceSelect" name="audience" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 transition">
+              <option value="all">All Users</option>
+              <option value="active">Active Users</option>
+              <option value="inactive">Inactive Users</option>
+            </select>
+          </div>
           <!-- Bottom Action Buttons -->
           <div class="mt-5 pt-2 flex items-center gap-3">
-            <button type="button" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-medium text-xs flex items-center justify-center gap-2 transition shrink-0">
+            <button type="reset" id="clearBroadcast" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-medium text-xs flex items-center justify-center gap-2 transition shrink-0">
               <i class="fa-solid fa-xmark text-slate-500"></i>
               <span>Clear</span>
             </button>
-            <button type="button" class="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#6c3cf7] to-[#5a29e4] hover:opacity-95 text-white font-semibold text-xs shadow-md shadow-indigo-500/25 flex items-center justify-center gap-2 transition">
+            <button type="submit" class="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#6c3cf7] to-[#5a29e4] hover:opacity-95 text-white font-semibold text-xs shadow-md shadow-indigo-500/25 flex items-center justify-center gap-2 transition">
               <i class="fa-solid fa-paper-plane text-xs"></i>
               <span>Send Broadcast</span>
             </button>
           </div>
-        </div>
+        </form>
         <!-- Column 2: Message Preview (4 Cols on XL, 6 on LG) -->
         <div class="lg:col-span-6 xl:col-span-4 bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 flex flex-col">
           <!-- Card Header -->
@@ -591,125 +671,70 @@ Invite your friends and earn 150 T for each successful referral.
               </div>
             </div>
             <!-- History Items List -->
-            <div class="divide-y divide-slate-100">
-              <!-- Item 1 -->
-              <div class="py-3 flex items-center justify-between gap-2">
-                <div class="flex items-center gap-3 min-w-0">
-                  <div class="w-10 h-10 rounded-xl bg-[#fff3e6] flex items-center justify-center shrink-0 text-lg"> 🎁 </div>
-                  <div class="min-w-0">
-                    <h4 class="text-xs font-bold text-slate-900 truncate">Diwali Special Bonus!</h4>
-                    <p class="text-[11px] text-slate-400 mt-0.5">29 Oct 2026, 10:30 AM</p>
-                    <p class="text-[11px] text-slate-500">All Users (12,458)</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2.5 shrink-0">
-                  <div class="text-left min-w-[92px]">
-                    <p class="text-[10px] text-slate-400 leading-tight">Delivered</p>
-                    <p class="text-[11px] font-bold text-emerald-600">12,120 (97.3%)</p>
-                    <p class="text-[10px] text-slate-400 leading-tight mt-0.5">Failed</p>
-                    <p class="text-[11px] font-semibold text-rose-500">338 (2.7%)</p>
-                  </div>
-                </div>
+            <?php if ($loadError !== null): ?>
+              <div class="py-8 text-center text-xs font-medium text-rose-600">
+                <i class="fa-solid fa-triangle-exclamation mr-2"></i><?= e($loadError) ?>
               </div>
-              <!-- Item 2 -->
-              <div class="py-3 flex items-center justify-between gap-2">
-                <div class="flex items-center gap-3 min-w-0">
-                  <div class="w-10 h-10 rounded-xl bg-[#e8f3ff] text-[#2563eb] flex items-center justify-center shrink-0">
-                    <i class="fa-solid fa-paper-plane text-sm"></i>
-                  </div>
-                  <div class="min-w-0">
-                    <h4 class="text-xs font-bold text-slate-900 truncate">New Referral Reward Update</h4>
-                    <p class="text-[11px] text-slate-400 mt-0.5">26 Oct 2026, 05:15 PM</p>
-                    <p class="text-[11px] text-slate-500">All Users (12,102)</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2.5 shrink-0">
-                  <div class="text-left min-w-[92px]">
-                    <p class="text-[10px] text-slate-400 leading-tight">Delivered</p>
-                    <p class="text-[11px] font-bold text-emerald-600">11,890 (96.1%)</p>
-                    <p class="text-[10px] text-slate-400 leading-tight mt-0.5">Failed</p>
-                    <p class="text-[11px] font-semibold text-rose-500">472 (3.9%)</p>
-                  </div>
-                </div>
+            <?php elseif ($history === []): ?>
+              <div class="py-8 text-center text-xs font-medium text-slate-500">
+                <i class="fa-regular fa-folder-open mr-2"></i>No broadcasts sent yet.
               </div>
-              <!-- Item 3 -->
-              <div class="py-3 flex items-center justify-between gap-2">
-                <div class="flex items-center gap-3 min-w-0">
-                  <div class="w-10 h-10 rounded-xl bg-[#fff0f3] text-[#e11d48] flex items-center justify-center shrink-0">
-                    <i class="fa-solid fa-bullhorn text-sm"></i>
+            <?php else: ?>
+              <?php foreach ($history as $b): ?>
+                <?php
+                  [$iconClass, $icon] = broadcast_icon((string) $b['media_type']);
+                  $recipients = (int) $b['total_recipients'];
+                  $ok         = (int) $b['delivered_count'];
+                  $bad        = (int) $b['failed_count'];
+                  $okPct      = $recipients > 0 ? round($ok / $recipients * 100, 1) : 0.0;
+                  $badPct     = $recipients > 0 ? round($bad / $recipients * 100, 1) : 0.0;
+                  $when       = $b['sent_at'] ?? null;
+                ?>
+                <div class="py-3 flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-10 h-10 rounded-xl <?= e($iconClass) ?> flex items-center justify-center shrink-0">
+                      <i class="fa-solid <?= e($icon) ?> text-sm"></i>
+                    </div>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-1.5">
+                        <h4 class="text-xs font-bold text-slate-900 truncate"><?= e($b['title']) ?></h4>
+                        <?php
+                          $status = (string) $b['status'];
+                          $badge  = match ($status) {
+                              'sent'      => 'bg-emerald-50 text-emerald-600',
+                              'sending'   => 'bg-blue-50 text-blue-600',
+                              'scheduled' => 'bg-amber-50 text-amber-600',
+                              'failed'    => 'bg-rose-50 text-rose-600',
+                              default     => 'bg-slate-100 text-slate-500',
+                          };
+                        ?>
+                        <span class="shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide <?= e($badge) ?>"><?= e($status) ?></span>
+                      </div>
+                      <p class="text-[11px] text-slate-400 mt-0.5">
+                        <?= $when !== null ? e(date('d M Y, h:i A', strtotime((string) $when))) : 'Not sent' ?>
+                      </p>
+                      <p class="text-[11px] text-slate-500">
+                        <?= e(ucfirst((string) $b['audience'])) ?> Users (<?= number_format($recipients) ?>)
+                      </p>
+                    </div>
                   </div>
-                  <div class="min-w-0">
-                    <h4 class="text-xs font-bold text-slate-900 truncate">Withdrawal Update</h4>
-                    <p class="text-[11px] text-slate-400 mt-0.5">22 Oct 2026, 02:40 PM</p>
-                    <p class="text-[11px] text-slate-500">Active Users (8,320)</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2.5 shrink-0">
-                  <div class="text-left min-w-[92px]">
-                    <p class="text-[10px] text-slate-400 leading-tight">Delivered</p>
-                    <p class="text-[11px] font-bold text-emerald-600">8,054 (96.8%)</p>
-                    <p class="text-[10px] text-slate-400 leading-tight mt-0.5">Failed</p>
-                    <p class="text-[11px] font-semibold text-rose-500">266 (3.2%)</p>
-                  </div>
-                </div>
-              </div>
-              <!-- Item 4 -->
-              <div class="py-3 flex items-center justify-between gap-2">
-                <div class="flex items-center gap-3 min-w-0">
-                  <div class="w-10 h-10 rounded-xl bg-[#fff3e6] flex items-center justify-center shrink-0 text-lg"> 🎁 </div>
-                  <div class="min-w-0">
-                    <h4 class="text-xs font-bold text-slate-900 truncate">Signup Bonus Increased</h4>
-                    <p class="text-[11px] text-slate-400 mt-0.5">18 Oct 2026, 11:20 AM</p>
-                    <p class="text-[11px] text-slate-500">All Users (11,904)</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2.5 shrink-0">
-                  <div class="text-left min-w-[92px]">
-                    <p class="text-[10px] text-slate-400 leading-tight">Delivered</p>
-                    <p class="text-[11px] font-bold text-emerald-600">11,462 (96.3%)</p>
-                    <p class="text-[10px] text-slate-400 leading-tight mt-0.5">Failed</p>
-                    <p class="text-[11px] font-semibold text-rose-500">442 (3.7%)</p>
-                  </div>
-                </div>
-              </div>
-              <!-- Item 5 -->
-              <div class="py-3 flex items-center justify-between gap-2">
-                <div class="flex items-center gap-3 min-w-0">
-                  <div class="w-10 h-10 rounded-xl bg-[#f2edff] text-[#6d37f7] flex items-center justify-center shrink-0">
-                    <i class="fa-solid fa-chart-simple text-sm"></i>
-                  </div>
-                  <div class="min-w-0">
-                    <h4 class="text-xs font-bold text-slate-900 truncate">Top 10 Referrers This Week</h4>
-                    <p class="text-[11px] text-slate-400 mt-0.5">15 Oct 2026, 06:10 PM</p>
-                    <p class="text-[11px] text-slate-500">All Users (11,750)</p>
+                  <div class="flex items-center gap-2.5 shrink-0">
+                    <div class="text-left min-w-[92px]">
+                      <p class="text-[10px] text-slate-400 leading-tight">Delivered</p>
+                      <p class="text-[11px] font-bold text-emerald-600"><?= number_format($ok) ?> (<?= e($okPct) ?>%)</p>
+                      <p class="text-[10px] text-slate-400 leading-tight mt-0.5">Failed</p>
+                      <p class="text-[11px] font-semibold text-rose-500"><?= number_format($bad) ?> (<?= e($badPct) ?>%)</p>
+                    </div>
                   </div>
                 </div>
-                <div class="flex items-center gap-2.5 shrink-0">
-                  <div class="text-left min-w-[92px]">
-                    <p class="text-[10px] text-slate-400 leading-tight">Delivered</p>
-                    <p class="text-[11px] font-bold text-emerald-600">11,280 (95.9%)</p>
-                    <p class="text-[10px] text-slate-400 leading-tight mt-0.5">Failed</p>
-                    <p class="text-[11px] font-semibold text-rose-500">470 (4.1%)</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+              <?php endforeach; ?>
+            <?php endif; ?>
           <!-- Pagination Footer -->
           <div class="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-            <p class="text-[11px] text-slate-500">Showing 1 to 8 of 28 broadcasts</p>
-            <div class="flex items-center gap-1">
-              <button class="w-7 h-7 rounded-lg border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center text-[10px] transition">
-                <i class="fa-solid fa-chevron-left"></i>
-              </button>
-              <button class="w-7 h-7 rounded-lg bg-[#6339f9] text-white font-semibold flex items-center justify-center text-xs shadow-2xs"> 1 </button>
-              <button class="w-7 h-7 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center text-xs transition"> 2 </button>
-              <button class="w-7 h-7 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center text-xs transition"> 3 </button>
-              <button class="w-7 h-7 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center text-xs transition"> 4 </button>
-              <button class="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center text-[10px] transition">
-                <i class="fa-solid fa-chevron-right"></i>
-              </button>
-            </div>
+            <p class="text-[11px] text-slate-500">
+              Showing <?= number_format(count($history)) ?> of <?= number_format((int) $stats['total_broadcasts']) ?> broadcasts
+            </p>
+            <a href="broadcast.php" class="text-[11px] font-semibold text-[#6339f9] hover:underline">Refresh</a>
           </div>
         </div>
       </section>
@@ -1186,6 +1211,44 @@ Invite your friends and earn 150 T for each successful referral.
       });
       textMessage.addEventListener('input', () => {
         textCharCount.textContent = textMessage.value.length + '/4096';
+      });
+
+      // ---- Submit: mirror the composer state into the hidden form fields ----
+      const broadcastForm = document.getElementById('broadcastForm');
+      const mediaTypeInput = document.getElementById('mediaTypeInput');
+      const messageTextInput = document.getElementById('messageTextInput');
+      const buttonsInput = document.getElementById('buttonsInput');
+
+      broadcastForm.addEventListener('submit', (e) => {
+        const panel = getPanel(activeTab);
+        const caption = panel ? panel.querySelector('[data-field="caption"]') : null;
+        const text = activeTab === 'text' ? textMessage.value : (caption ? caption.value : '');
+        const buttons = collectButtons(activeTab);
+
+        mediaTypeInput.value = activeTab === 'text' ? 'none' : activeTab;
+        messageTextInput.value = text;
+        buttonsInput.value = JSON.stringify(buttons);
+
+        if (text.trim() === '' && buttons.length === 0) {
+          e.preventDefault();
+          alert('Add a message or at least one button before sending.');
+        }
+      });
+
+      document.getElementById('clearBroadcast').addEventListener('click', () => {
+        setTimeout(() => {
+          textCharCount.textContent = '0/4096';
+          Object.keys(mediaState).forEach((tab) => {
+            if (mediaState[tab] && mediaState[tab].url) URL.revokeObjectURL(mediaState[tab].url);
+            mediaState[tab] = null;
+          });
+          document.querySelectorAll('[data-upload]').forEach((box) => {
+            const input = box.querySelector('[data-field="media"]');
+            if (input) input.value = '';
+            updateUploadBox(input, null);
+          });
+          renderPreview();
+        }, 0);
       });
 
       renderPreview();

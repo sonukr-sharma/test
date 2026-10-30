@@ -1,3 +1,99 @@
+<?php
+/**
+ * Admin login — adm/auth/index.php
+ */
+declare(strict_types=1);
+
+require_once __DIR__ . '/../../config.php';
+
+// Already signed in? Go straight to the dashboard.
+if (is_admin_logged_in() && current_admin() !== null) {
+    redirect('adm/broadcast.php');
+}
+
+$errors      = [];
+$identifier  = '';
+$remember    = false;
+$flash       = $_SESSION['auth_flash'] ?? null;
+unset($_SESSION['auth_flash']);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $identifier = trim((string) ($_POST['identifier'] ?? ''));
+    $password   = (string) ($_POST['password'] ?? '');
+    $remember   = !empty($_POST['remember']);
+
+    if (!csrf_verify($_POST['csrf_token'] ?? null)) {
+        $errors['form'] = 'Your session expired. Please try again.';
+    } elseif ($identifier === '') {
+        $errors['identifier'] = 'Please enter your email or username.';
+    } elseif ($password === '') {
+        $errors['password'] = 'Please enter your password.';
+    } else {
+        try {
+            $stmt = db()->prepare(
+                'SELECT `id`, `name`, `username`, `email`, `password_hash`, `role`, `is_active`
+                   FROM `admins`
+                  WHERE `username` = :username OR `email` = :email
+                  LIMIT 1'
+            );
+            $stmt->execute([':username' => $identifier, ':email' => $identifier]);
+            $admin = $stmt->fetch();
+
+            if ($admin === false || (int) $admin['is_active'] !== 1) {
+                $errors['form'] = 'Incorrect email or password. Please try again.';
+            } elseif (!password_verify($password, (string) $admin['password_hash'])) {
+                $errors['form'] = 'Incorrect email or password. Please try again.';
+            } else {
+                // Re-hash if the algorithm/cost changed.
+                if (password_needs_rehash((string) $admin['password_hash'], PASSWORD_BCRYPT)) {
+                    $rehash = db()->prepare('UPDATE `admins` SET `password_hash` = :hash WHERE `id` = :id');
+                    $rehash->execute([
+                        ':hash' => password_hash($password, PASSWORD_BCRYPT),
+                        ':id'   => $admin['id'],
+                    ]);
+                }
+
+                session_regenerate_id(true);
+                $_SESSION['admin_id'] = (int) $admin['id'];
+
+                $update = db()->prepare(
+                    'UPDATE `admins`
+                        SET `last_login_at` = NOW(), `last_login_ip` = :ip
+                      WHERE `id` = :id'
+                );
+                $update->execute([
+                    ':ip' => $_SERVER['REMOTE_ADDR'] ?? null,
+                    ':id' => $admin['id'],
+                ]);
+
+                $log = db()->prepare(
+                    'INSERT INTO `audit_logs` (`admin_id`, `action`, `entity_type`, `entity_id`, `ip_address`)
+                     VALUES (:admin_id, :action, :entity_type, :entity_id, :ip)'
+                );
+                $log->execute([
+                    ':admin_id'    => $admin['id'],
+                    ':action'      => 'admin.login',
+                    ':entity_type' => 'admin',
+                    ':entity_id'   => $admin['id'],
+                    ':ip'          => $_SERVER['REMOTE_ADDR'] ?? null,
+                ]);
+
+                $_SESSION['auth_flash'] = [
+                    'type'    => 'success',
+                    'message' => 'Signed in successfully. Redirecting…',
+                ];
+
+                redirect('adm/broadcast.php');
+            }
+        } catch (Throwable $e) {
+            error_log('Admin login failed: ' . $e->getMessage());
+            $errors['form'] = APP_DEBUG
+                ? 'Login error: ' . $e->getMessage()
+                : 'Unable to sign in right now. Please try again later.';
+        }
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -194,12 +290,13 @@
             </div>
 
             <!-- Error banner -->
-            <div id="formError" class="hidden mb-5 items-start gap-2.5 rounded-xl bg-rose-50 border border-rose-200 px-3.5 py-3 text-xs text-rose-700">
+            <div id="formError" class="<?= empty($errors['form']) ? 'hidden' : 'flex' ?> mb-5 items-start gap-2.5 rounded-xl bg-rose-50 border border-rose-200 px-3.5 py-3 text-xs text-rose-700">
               <i class="fa-solid fa-circle-exclamation mt-0.5 shrink-0"></i>
-              <span id="formErrorText">Invalid credentials.</span>
+              <span id="formErrorText"><?= e($errors['form'] ?? 'Invalid credentials.') ?></span>
             </div>
 
-            <form id="loginForm" novalidate class="space-y-4">
+            <form id="loginForm" method="post" action="" novalidate class="space-y-4">
+              <?= csrf_field() ?>
 
               <!-- Email / Username -->
               <div>
@@ -217,10 +314,11 @@
                     autocapitalize="none"
                     spellcheck="false"
                     placeholder="admin@referearn.com"
+                    value="<?= e($identifier) ?>"
                     class="field-input w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-10 pr-3.5 py-3 text-sm text-slate-900 placeholder:text-slate-400"
                   />
                 </div>
-                <p data-error-for="identifier" class="hidden mt-1.5 text-[11px] font-medium text-rose-600"></p>
+                <p data-error-for="identifier" class="<?= empty($errors['identifier']) ? 'hidden' : '' ?> mt-1.5 text-[11px] font-medium text-rose-600"><?= e($errors['identifier'] ?? '') ?></p>
               </div>
 
               <!-- Password -->
@@ -250,13 +348,13 @@
                     <i id="togglePasswordIcon" class="fa-regular fa-eye text-sm"></i>
                   </button>
                 </div>
-                <p data-error-for="password" class="hidden mt-1.5 text-[11px] font-medium text-rose-600"></p>
+                <p data-error-for="password" class="<?= empty($errors['password']) ? 'hidden' : '' ?> mt-1.5 text-[11px] font-medium text-rose-600"><?= e($errors['password'] ?? '') ?></p>
               </div>
 
               <!-- Remember / Caps lock hint -->
               <div class="flex items-center justify-between gap-3 pt-0.5">
                 <label class="flex items-center gap-2.5 cursor-pointer select-none">
-                  <input id="remember" type="checkbox" class="peer sr-only" />
+                  <input id="remember" name="remember" value="1" type="checkbox" <?= $remember ? 'checked' : '' ?> class="peer sr-only" />
                   <span class="check-box w-[18px] h-[18px] rounded-[5px] border border-slate-300 bg-white flex items-center justify-center text-white transition peer-checked:bg-[#6c3cf7] peer-checked:border-[#6c3cf7] peer-focus-visible:ring-2 peer-focus-visible:ring-[#6c3cf7]/40">
                     <i class="fa-solid fa-check text-[9px] opacity-0 transition-opacity"></i>
                   </span>
@@ -322,6 +420,9 @@
 
       document.getElementById('year').textContent = new Date().getFullYear();
 
+      /* ---------- Server flash ---------- */
+      const serverFlash = <?= json_encode($flash, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
       /* ---------- Toast ---------- */
       let toastTimer;
       function showToast(message, type) {
@@ -334,6 +435,10 @@
         toastTimer = setTimeout(function () {
           toast.classList.add('opacity-0', 'translate-y-3', 'pointer-events-none');
         }, 3200);
+      }
+
+      if (serverFlash && serverFlash.message) {
+        showToast(serverFlash.message, serverFlash.type === 'error' ? 'error' : 'success');
       }
 
       /* ---------- Field errors ---------- */
@@ -446,37 +551,25 @@
 
       /* ---------- Submit ---------- */
       form.addEventListener('submit', function (event) {
-        event.preventDefault();
         clearFormError();
 
         const okIdentifier = validateIdentifier();
         const okPassword = validatePassword();
 
         if (!okIdentifier || !okPassword) {
+          event.preventDefault();
           (!okIdentifier ? identifier : password).focus();
           return;
         }
 
+        // Valid — let the browser POST to the server.
         setLoading(true);
-
-        // Demo authentication — replace with a real API call.
-        setTimeout(function () {
-          setLoading(false);
-          if (password.value === 'admin123') {
-            showToast('Signed in successfully. Redirecting…', 'success');
-            setTimeout(function () { window.location.href = '../broadcast.php'; }, 900);
-          } else {
-            showFormError('Incorrect email or password. Please try again.');
-            password.value = '';
-            password.focus();
-          }
-        }, 1100);
       });
 
       /* ---------- Restore remembered identifier ---------- */
       try {
         const saved = localStorage.getItem('re_admin_identifier');
-        if (saved) {
+        if (saved && !identifier.value) {
           identifier.value = saved;
           remember.checked = true;
           password.focus({ preventScroll: true });
