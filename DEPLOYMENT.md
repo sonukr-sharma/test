@@ -11,7 +11,7 @@ HTTPS site that Telegram can talk to.
 |---|---|
 | **PHP 8.1 or newer** | The code uses `declare(strict_types=1)`, typed properties, and `match`. |
 | **PHP extensions:** `pdo_mysql`, `curl`, `openssl`, `mbstring`, `json`, `bcmath`, `fileinfo` | Database, Telegram API, HMAC signature checks, UTF-8 names, money maths, uploads. |
-| **MySQL 5.7+ / MariaDB 10.3+** | Schema uses `JSON` columns and window functions (`ROW_NUMBER()`). |
+| **MySQL 5.7+ / MariaDB 10.2+** | Schema uses `JSON` columns (5.7.8+ / 10.2.7+). No window functions are used, so 5.7 works. |
 | **HTTPS with a valid certificate** | **Telegram refuses non-HTTPS webhook URLs.** This is not optional. |
 | **A Telegram bot token** | From [@BotFather](https://t.me/BotFather). |
 | **Write access to one folder outside the web root** | For PHP error logs. |
@@ -44,6 +44,8 @@ Verify:
 ```sql
 SELECT COUNT(*) FROM information_schema.tables
 WHERE table_schema = 'myuser_refer_earn';   -- expect 17 (14 tables + 3 views)
+
+SELECT COUNT(*) FROM settings;              -- expect 20
 ```
 
 ---
@@ -327,6 +329,8 @@ re-import the whole file over a live database — it drops tables).
 
 | Symptom | Likely cause |
 |---|---|
+| `#1064 ... near '(ORDER BY'` while importing `schema.sql` | Your server is older than MySQL 8.0 / MariaDB 10.2 and the schema still contains a window function. The shipped `v_leaderboard` uses a correlated subquery instead, so re-download `schema.sql`. |
+| `#1064` on `CHECK (...)` | MySQL 5.7 parses but ignores `CHECK`; only 8.0.16+ / MariaDB 10.2.1+ enforce it. Harmless. |
 | Blank white page | `APP_DEBUG=0` is hiding a fatal error. Set it to `1` temporarily, reload, then set it back. |
 | "Database connection failed" | Wrong `DB_*` values in `.env`, or the DB user lacks privileges. |
 | Login says "Invalid credentials" | The `admins` row was not seeded, or the password hash was overwritten. |

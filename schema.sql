@@ -1,7 +1,15 @@
 -- =====================================================================
 --  Refer & Earn  —  Database Schema
---  Target: MySQL 8.0+ / MariaDB 10.4+  (XAMPP default: MariaDB 10.4)
+--  Target: MySQL 5.7+ / MariaDB 10.2+  (XAMPP default: MariaDB 10.4)
 --  Charset: utf8mb4 / utf8mb4_unicode_ci
+--
+--  Portability notes:
+--    * No window functions (RANK/ROW_NUMBER) — v_leaderboard uses a
+--      correlated subquery so MySQL 5.7 works too.
+--    * The CHECK constraint on `withdrawals` is parsed but ignored by
+--      MySQL 5.7; it is enforced on MySQL 8.0.16+ / MariaDB 10.2.1+.
+--    * DESC in `idx_users_leaderboard` is ignored by MySQL 5.7 (harmless).
+--    * JSON columns are supported from MySQL 5.7.8 / MariaDB 10.2.7.
 --
 --  Covers:
 --    * Telegram bot users, wallets and referral earnings   (index, refer-earn, activity, leaderboard, withdraw)
@@ -350,6 +358,11 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- =====================================================================
 
 -- Leaderboard: rank users by credited referrals, then earnings.
+--
+-- Deliberately avoids RANK() OVER (...): window functions need MySQL 8.0+ or
+-- MariaDB 10.2+, and older shared hosts still run MySQL 5.7. The correlated
+-- subquery below produces identical RANK() semantics — users tied on both
+-- referral_count and total_earned_t share a rank, and the next rank is skipped.
 CREATE OR REPLACE VIEW `v_leaderboard` AS
 SELECT
   `u`.`id`              AS `user_id`,
@@ -357,7 +370,16 @@ SELECT
   `u`.`avatar_url`,
   `u`.`referral_count`,
   `u`.`total_earned_t`,
-  RANK() OVER (ORDER BY `u`.`referral_count` DESC, `u`.`total_earned_t` DESC) AS `rank_position`
+  (
+    SELECT COUNT(*) + 1
+    FROM `users` `x`
+    WHERE `x`.`status` <> 'blocked'
+      AND (
+            `x`.`referral_count` > `u`.`referral_count`
+         OR (`x`.`referral_count` = `u`.`referral_count`
+             AND `x`.`total_earned_t` > `u`.`total_earned_t`)
+      )
+  ) AS `rank_position`
 FROM `users` `u`
 WHERE `u`.`status` <> 'blocked';
 
@@ -414,6 +436,7 @@ INSERT INTO `settings` (`key`, `value`, `data_type`, `group_name`, `label`) VALU
   -- Channel gate: force users to join channels before the mini app unlocks.
   ('require_channel_join',     '0',                            'boolean', 'gate',      'Require Channel Membership'),
   ('require_bot_start',        '1',                            'boolean', 'gate',      'Require /start Before Using the App'),
+  ('channel_gate_strict',      '0',                            'boolean', 'gate',      'Block Users When the Channel Check Fails'),
   ('channel_gate_message',     'Join our channels to unlock Refer & Earn and start earning rewards.', 'string', 'gate', 'Channel Gate Message');
 
 -- =====================================================================
