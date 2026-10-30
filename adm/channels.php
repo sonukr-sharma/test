@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin — Required channels (channel gate)
+ * Admin â€” Required channels (channel gate)
  *
  * Users must join every active channel here before the mini app unlocks,
  * but only when "Require Channel Membership" is enabled in Settings.
@@ -216,6 +216,10 @@ $botReady    = bot_token() !== '';
         <i class="fa-solid fa-gear text-slate-400 w-5 text-center text-base"></i>
         <span>Settings</span>
       </a>
+      <a href="account.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
+        <i class="fa-solid fa-user-shield text-slate-400 w-5 text-center text-base"></i>
+        <span>Account</span>
+      </a>
     </nav>
   </aside>
 
@@ -268,8 +272,8 @@ $botReady    = bot_token() !== '';
             <h3 class="text-sm sm:text-base font-bold text-slate-900">Channel Gate</h3>
             <p class="text-xs text-slate-500 mt-0.5">
               <?= $gateEnabled
-                    ? 'Enabled — users must join all ' . $activeCount . ' active channel(s).'
-                    : 'Disabled — the mini app is open to everyone.' ?>
+                    ? 'Enabled â€” users must join all ' . $activeCount . ' active channel(s).'
+                    : 'Disabled â€” the mini app is open to everyone.' ?>
             </p>
           </div>
         </div>
@@ -321,36 +325,38 @@ $botReady    = bot_token() !== '';
         <i class="fa-solid fa-plus text-[#6d37f7]"></i> Add a channel
       </h3>
 
-      <form method="post" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+      <form method="post" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="add">
 
-        <div class="lg:col-span-1">
+        <div class="lg:col-span-3">
           <label class="block text-[11px] font-semibold text-slate-600 mb-1">Channel ID</label>
           <input name="chat_id" required placeholder="@mychannel"
                  class="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50/70 focus:outline-none focus:border-indigo-500 font-mono" />
         </div>
 
-        <div class="lg:col-span-1">
+        <div class="lg:col-span-3">
           <label class="block text-[11px] font-semibold text-slate-600 mb-1">Title</label>
           <input name="title" required placeholder="Official Channel"
                  class="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50/70 focus:outline-none focus:border-indigo-500" />
         </div>
 
-        <div class="lg:col-span-2">
+        <div class="lg:col-span-3">
           <label class="block text-[11px] font-semibold text-slate-600 mb-1">Invite URL (optional)</label>
           <input name="invite_url" placeholder="https://t.me/+abc123"
                  class="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50/70 focus:outline-none focus:border-indigo-500 font-mono" />
         </div>
 
-        <div class="flex items-end gap-2">
-          <div class="w-20">
-            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Order</label>
-            <input name="sort_order" type="number" value="0"
-                   class="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50/70 focus:outline-none focus:border-indigo-500" />
-          </div>
-          <button type="submit" class="flex-1 bg-gradient-to-r from-[#6c3cf7] to-[#5a29e4] hover:opacity-95 text-white font-semibold text-xs px-4 py-2.5 rounded-lg shadow-md shadow-indigo-500/25 flex items-center justify-center gap-2 transition whitespace-nowrap">
-            <i class="fa-solid fa-plus"></i><span>Add</span>
+        <div class="lg:col-span-1">
+          <label class="block text-[11px] font-semibold text-slate-600 mb-1">Order</label>
+          <input name="sort_order" type="number" value="0"
+                 class="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50/70 focus:outline-none focus:border-indigo-500" />
+        </div>
+
+        <div class="lg:col-span-2 flex items-end">
+          <button type="submit"
+                  class="w-full bg-gradient-to-r from-[#6c3cf7] to-[#5a29e4] hover:opacity-95 text-white font-semibold text-xs px-4 py-2.5 rounded-lg shadow-md shadow-indigo-500/25 flex items-center justify-center gap-2 transition whitespace-nowrap">
+            <i class="fa-solid fa-plus"></i><span>Add channel</span>
           </button>
         </div>
       </form>
@@ -372,56 +378,69 @@ $botReady    = bot_token() !== '';
       <?php else: ?>
         <div class="divide-y divide-slate-100">
           <?php foreach ($channels as $channel): ?>
-            <form method="post" class="px-5 py-4 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+            <?php $isActive = (int) $channel['is_active'] === 1; ?>
+            <form method="post" class="px-4 sm:px-5 py-4">
               <?= csrf_field() ?>
-              <input type="hidden" name="action" value="update">
               <input type="hidden" name="id" value="<?= (int) $channel['id'] ?>">
 
-              <div class="sm:col-span-3">
-                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Channel ID</label>
-                <p class="px-3 py-2 text-xs rounded-lg bg-slate-100 font-mono text-slate-600 truncate">
-                  <?= e((string) $channel['chat_id']) ?>
-                </p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 lg:items-end">
+
+                <!-- Channel ID (read-only) -->
+                <div class="lg:col-span-3">
+                  <label class="block text-[11px] font-semibold text-slate-600 mb-1">Channel ID</label>
+                  <p class="px-3 py-2 text-xs rounded-lg bg-slate-100 font-mono text-slate-600 truncate"
+                     title="<?= e((string) $channel['chat_id']) ?>">
+                    <?= e((string) $channel['chat_id']) ?>
+                  </p>
+                </div>
+
+                <!-- Title -->
+                <div class="lg:col-span-3">
+                  <label class="block text-[11px] font-semibold text-slate-600 mb-1">Title</label>
+                  <input name="title" value="<?= e((string) $channel['title']) ?>" required
+                         class="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50/70 focus:outline-none focus:border-indigo-500" />
+                </div>
+
+                <!-- Invite URL -->
+                <div class="lg:col-span-3">
+                  <label class="block text-[11px] font-semibold text-slate-600 mb-1">Invite URL</label>
+                  <input name="invite_url" value="<?= e((string) $channel['invite_url']) ?>"
+                         placeholder="https://t.me/+abc123"
+                         class="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50/70 focus:outline-none focus:border-indigo-500 font-mono" />
+                </div>
+
+                <!-- Order -->
+                <div class="lg:col-span-1">
+                  <label class="block text-[11px] font-semibold text-slate-600 mb-1">Order</label>
+                  <input name="sort_order" type="number" value="<?= (int) $channel['sort_order'] ?>"
+                         class="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50/70 focus:outline-none focus:border-indigo-500" />
+                </div>
+
+                <!-- Active + actions -->
+                <div class="lg:col-span-2 flex items-center justify-between lg:justify-end gap-2 pt-1 lg:pt-0">
+                  <label class="flex items-center gap-2 cursor-pointer select-none" title="Show this channel on the lock screen">
+                    <input type="checkbox" name="is_active" value="1" <?= $isActive ? 'checked' : '' ?> class="sr-only peer">
+                    <span class="relative inline-block w-9 h-5 shrink-0 bg-slate-300 rounded-full transition-colors peer-checked:bg-[#6339f9] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-4"></span>
+                    <span class="text-[11px] font-semibold <?= $isActive ? 'text-emerald-600' : 'text-slate-400' ?>">
+                      <?= $isActive ? 'Active' : 'Off' ?>
+                    </span>
+                  </label>
+
+                  <div class="flex items-center gap-1.5">
+                    <button type="submit" name="action" value="update" title="Save changes"
+                            class="w-9 h-9 rounded-lg bg-[#f2edff] text-[#6d37f7] hover:bg-[#e6dcff] flex items-center justify-center transition">
+                      <i class="fa-solid fa-floppy-disk text-xs"></i>
+                    </button>
+                    <button type="submit" name="action" value="delete" formnovalidate
+                            title="Remove channel"
+                            onclick="return confirm('Remove <?= e(addslashes((string) $channel['title'])) ?> from the gate?');"
+                            class="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center justify-center transition">
+                      <i class="fa-solid fa-trash-can text-xs"></i>
+                    </button>
+                  </div>
+                </div>
+
               </div>
-
-              <div class="sm:col-span-3">
-                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Title</label>
-                <input name="title" value="<?= e((string) $channel['title']) ?>" required
-                       class="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50/70 focus:outline-none focus:border-indigo-500" />
-              </div>
-
-              <div class="sm:col-span-3">
-                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Invite URL</label>
-                <input name="invite_url" value="<?= e((string) $channel['invite_url']) ?>"
-                       class="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50/70 focus:outline-none focus:border-indigo-500 font-mono" />
-              </div>
-
-              <div class="sm:col-span-1">
-                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Order</label>
-                <input name="sort_order" type="number" value="<?= (int) $channel['sort_order'] ?>"
-                       class="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50/70 focus:outline-none focus:border-indigo-500" />
-              </div>
-
-              <div class="sm:col-span-2 flex items-center justify-end gap-2">
-                <label class="flex items-center gap-1.5 cursor-pointer" title="Active">
-                  <input type="checkbox" name="is_active" value="1" <?= (int) $channel['is_active'] === 1 ? 'checked' : '' ?> class="sr-only peer">
-                  <span class="w-9 h-5 bg-slate-300 rounded-full peer peer-checked:after:translate-x-4 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6339f9] relative inline-block"></span>
-                </label>
-
-                <button type="submit" title="Save"
-                        class="w-9 h-9 rounded-lg bg-[#f2edff] text-[#6d37f7] hover:bg-[#e6dcff] flex items-center justify-center transition">
-                  <i class="fa-solid fa-floppy-disk text-xs"></i>
-                </button>
-            </form>
-
-            <form method="post" class="px-5 pb-4 -mt-2">
-              <?= csrf_field() ?>
-              <input type="hidden" name="action" value="delete">
-              <input type="hidden" name="id" value="<?= (int) $channel['id'] ?>">
-              <button type="submit" onclick="return confirm('Remove this channel from the gate?');"
-                      class="text-[11px] font-semibold text-rose-600 hover:text-rose-800">
-                <i class="fa-solid fa-trash-can mr-1"></i> Remove
-              </button>
             </form>
           <?php endforeach; ?>
         </div>

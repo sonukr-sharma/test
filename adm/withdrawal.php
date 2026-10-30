@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin — Withdrawals dashboard
+ * Admin â€” Withdrawals dashboard
  */
 declare(strict_types=1);
 
@@ -112,11 +112,11 @@ function status_badge(string $status): array
 function payout_details(array $row): array
 {
     if (($row['payout_method'] ?? 'upi') === 'upi') {
-        return [(string) ($row['upi_id'] ?? '—'), ''];
+        return [(string) ($row['upi_id'] ?? 'â€”'), ''];
     }
 
     return [
-        (string) ($row['bank_account_number'] ?? '—'),
+        (string) ($row['bank_account_number'] ?? 'â€”'),
         (string) ($row['bank_account_name'] ?? ''),
     ];
 }
@@ -209,6 +209,10 @@ try {
       <a href="settings.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
         <i class="fa-solid fa-gear text-slate-400 w-5 text-center text-base"></i>
         <span>Settings</span>
+      </a>
+      <a href="account.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
+        <i class="fa-solid fa-user-shield text-slate-400 w-5 text-center text-base"></i>
+        <span>Account</span>
       </a>
     </nav>
   </aside>
@@ -419,7 +423,7 @@ try {
                       </div>
                       <div>
                         <p class="font-bold text-slate-900">@<?= e($w['username'] ?? 'unknown') ?></p>
-                        <p class="text-[10px] text-slate-400">ID: <?= e($w['telegram_id'] ?? '—') ?></p>
+                        <p class="text-[10px] text-slate-400">ID: <?= e($w['telegram_id'] ?? 'â€”') ?></p>
                       </div>
                     </div>
                   </td>

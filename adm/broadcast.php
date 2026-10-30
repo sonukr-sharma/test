@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin — Broadcast dashboard
+ * Admin â€” Broadcast dashboard
  */
 declare(strict_types=1);
 
@@ -176,6 +176,10 @@ function broadcast_icon(string $mediaType): array
           <i class="fa-solid fa-gear text-slate-400 w-5 text-center text-base"></i>
           <span>Settings</span>
         </a>
+      <a href="account.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
+        <i class="fa-solid fa-user-shield text-slate-400 w-5 text-center text-base"></i>
+        <span>Account</span>
+      </a>
       </nav>
     </aside>
     <!-- Main Content Area -->
@@ -559,8 +563,8 @@ function broadcast_icon(string $mediaType): array
                 <button type="button" data-open="&gt; " data-close="" data-ph="quoted text" class="fmt-chip flex items-center justify-center gap-1.5 bg-white/80 hover:bg-white border border-white hover:border-[#6339f9]/40 rounded-lg px-2 py-1.5 text-[10px] font-mono text-slate-700 transition">
                   <span>&gt; Quote</span>
                 </button>
-                <button type="button" data-open="😀" data-close="" data-ph="" class="fmt-chip flex items-center justify-center gap-1.5 bg-white/80 hover:bg-white border border-white hover:border-[#6339f9]/40 rounded-lg px-2 py-1.5 text-[10px] font-mono text-slate-700 transition">
-                  <span>😀 Emoji</span>
+                <button type="button" data-open="ðŸ˜€" data-close="" data-ph="" class="fmt-chip flex items-center justify-center gap-1.5 bg-white/80 hover:bg-white border border-white hover:border-[#6339f9]/40 rounded-lg px-2 py-1.5 text-[10px] font-mono text-slate-700 transition">
+                  <span>ðŸ˜€ Emoji</span>
                 </button>
               </div>
               <p class="text-[10px] text-slate-500 mt-2">You can also use emojis and line breaks.</p>
@@ -644,15 +648,15 @@ function broadcast_icon(string $mediaType): array
                     </div>
                   </div>
                   <!-- Message Text -->
-                  <div id="previewText" class="whitespace-pre-wrap break-words text-slate-800">🎉 Earn 150 T per Referral!
+                  <div id="previewText" class="whitespace-pre-wrap break-words text-slate-800">ðŸŽ‰ Earn 150 T per Referral!
 
 Invite your friends and earn 150 T for each successful referral.
 
-✅ More Friends
-✅ More Rewards
-✅ No Limit
+âœ… More Friends
+âœ… More Rewards
+âœ… No Limit
 
-⏰ Start now and earn instantly!</div>
+â° Start now and earn instantly!</div>
                   <div id="previewTime" class="text-right text-[10px] text-slate-400 mt-1"> 10:30 AM </div>
                 </div>
                 <!-- Telegram Inline Buttons -->
@@ -1137,7 +1141,7 @@ Invite your friends and earn 150 T for each successful referral.
           }
         }
 
-        // Inline buttons — pairs side by side, a trailing odd button spans the full width below
+        // Inline buttons â€” pairs side by side, a trailing odd button spans the full width below
         previewButtons.innerHTML = '';
         const buttons = collectButtons(tab);
         const hasOddTail = buttons.length % 2 === 1;
@@ -1186,7 +1190,7 @@ Invite your friends and earn 150 T for each successful referral.
         if (file) {
           label.textContent = file.name;
           label.classList.add('truncate', 'max-w-full');
-          hint.textContent = formatSize(file.size) + ' · click to change';
+          hint.textContent = formatSize(file.size) + ' Â· click to change';
         } else {
           label.textContent = box.dataset.defaultLabel;
           label.classList.remove('truncate', 'max-w-full');

@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin — Platform settings
+ * Admin â€” Platform settings
  */
 declare(strict_types=1);
 
@@ -186,6 +186,10 @@ $s = settings();
         <i class="fa-solid fa-gear text-white w-5 text-center text-base"></i>
         <span>Settings</span>
       </a>
+      <a href="account.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
+        <i class="fa-solid fa-user-shield text-slate-400 w-5 text-center text-base"></i>
+        <span>Account</span>
+      </a>
     </nav>
   </aside>
 
@@ -313,10 +317,10 @@ $s = settings();
                         </div>
 
             <div>
-              <label class="block text-xs font-medium text-slate-700 mb-1.5">Conversion Rate (₹ per 1 T)</label>
+              <label class="block text-xs font-medium text-slate-700 mb-1.5">Conversion Rate (â‚¹ per 1 T)</label>
               <div class="flex rounded-lg border border-slate-200 overflow-hidden focus-within:border-indigo-500">
                 <input type="text" name="coin_to_inr_rate" value="<?= e((string) $s['coin_to_inr_rate']) ?>" class="w-full px-3.5 py-2 text-sm text-slate-800 bg-white focus:outline-none" />
-                <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">₹</span>
+                <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">â‚¹</span>
               </div>
             </div>
 
@@ -374,9 +378,9 @@ $s = settings();
                 <div class="mt-5 bg-[#f3f1fe] rounded-xl p-3">
                   <p class="text-[11px] font-semibold text-slate-700 mb-1.5">POST payload placeholders</p>
                   <div class="space-y-1 font-mono text-[11px] text-slate-600">
-                    <p><span class="text-[#6d37f7]">{amt}</span> — withdrawal amount</p>
-                    <p><span class="text-[#6d37f7]">{upi}</span> — user's UPI ID</p>
-                    <p><span class="text-[#6d37f7]">{txid}</span> — transaction ID <span class="text-slate-400">(optional)</span></p>
+                    <p><span class="text-[#6d37f7]">{amt}</span> â€” withdrawal amount</p>
+                    <p><span class="text-[#6d37f7]">{upi}</span> â€” user's UPI ID</p>
+                    <p><span class="text-[#6d37f7]">{txid}</span> â€” transaction ID <span class="text-slate-400">(optional)</span></p>
                   </div>
                 </div>
               </div>
