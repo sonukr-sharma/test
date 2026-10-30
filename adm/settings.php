@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin â€” Platform settings
+ * Admin — Platform settings
  */
 declare(strict_types=1);
 
@@ -378,9 +378,9 @@ $s = settings();
                 <div class="mt-5 bg-[#f3f1fe] rounded-xl p-3">
                   <p class="text-[11px] font-semibold text-slate-700 mb-1.5">POST payload placeholders</p>
                   <div class="space-y-1 font-mono text-[11px] text-slate-600">
-                    <p><span class="text-[#6d37f7]">{amt}</span> â€” withdrawal amount</p>
-                    <p><span class="text-[#6d37f7]">{upi}</span> â€” user's UPI ID</p>
-                    <p><span class="text-[#6d37f7]">{txid}</span> â€” transaction ID <span class="text-slate-400">(optional)</span></p>
+                    <p><span class="text-[#6d37f7]">{amt}</span> — withdrawal amount</p>
+                    <p><span class="text-[#6d37f7]">{upi}</span> — user's UPI ID</p>
+                    <p><span class="text-[#6d37f7]">{txid}</span> — transaction ID <span class="text-slate-400">(optional)</span></p>
                   </div>
                 </div>
               </div>

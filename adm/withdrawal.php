@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin â€” Withdrawals dashboard
+ * Admin — Withdrawals dashboard
  */
 declare(strict_types=1);
 
@@ -112,11 +112,11 @@ function status_badge(string $status): array
 function payout_details(array $row): array
 {
     if (($row['payout_method'] ?? 'upi') === 'upi') {
-        return [(string) ($row['upi_id'] ?? 'â€”'), ''];
+        return [(string) ($row['upi_id'] ?? '—'), ''];
     }
 
     return [
-        (string) ($row['bank_account_number'] ?? 'â€”'),
+        (string) ($row['bank_account_number'] ?? '—'),
         (string) ($row['bank_account_name'] ?? ''),
     ];
 }
@@ -423,7 +423,7 @@ try {
                       </div>
                       <div>
                         <p class="font-bold text-slate-900">@<?= e($w['username'] ?? 'unknown') ?></p>
-                        <p class="text-[10px] text-slate-400">ID: <?= e($w['telegram_id'] ?? 'â€”') ?></p>
+                        <p class="text-[10px] text-slate-400">ID: <?= e($w['telegram_id'] ?? '—') ?></p>
                       </div>
                     </div>
                   </td>

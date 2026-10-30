@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin â€” Broadcast dashboard
+ * Admin — Broadcast dashboard
  */
 declare(strict_types=1);
 
@@ -1141,7 +1141,7 @@ Invite your friends and earn 150 T for each successful referral.
           }
         }
 
-        // Inline buttons â€” pairs side by side, a trailing odd button spans the full width below
+        // Inline buttons — pairs side by side, a trailing odd button spans the full width below
         previewButtons.innerHTML = '';
         const buttons = collectButtons(tab);
         const hasOddTail = buttons.length % 2 === 1;

@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin â€” Required channels (channel gate)
+ * Admin — Required channels (channel gate)
  *
  * Users must join every active channel here before the mini app unlocks,
  * but only when "Require Channel Membership" is enabled in Settings.
@@ -272,8 +272,8 @@ $botReady    = bot_token() !== '';
             <h3 class="text-sm sm:text-base font-bold text-slate-900">Channel Gate</h3>
             <p class="text-xs text-slate-500 mt-0.5">
               <?= $gateEnabled
-                    ? 'Enabled â€” users must join all ' . $activeCount . ' active channel(s).'
-                    : 'Disabled â€” the mini app is open to everyone.' ?>
+                    ? 'Enabled — users must join all ' . $activeCount . ' active channel(s).'
+                    : 'Disabled — the mini app is open to everyone.' ?>
             </p>
           </div>
         </div>
