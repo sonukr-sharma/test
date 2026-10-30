@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Refer & Earn</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome 6 CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <!-- Google Fonts (Plus Jakarta Sans) -->
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #f4f3fa;
+    }
+    .header-bg {
+      background: linear-gradient(180deg, #5925dc 0%, #7038f5 65%, #f4f3fa 100%);
+    }
+    .btn-purple {
+      background: linear-gradient(135deg, #6b34f5 0%, #5821db 100%);
+      box-shadow: 0 6px 16px -3px rgba(91, 36, 224, 0.45);
+    }
+    .banner-bg {
+      background: radial-gradient(circle at 80% 50%, #7c4dff 0%, #5620d8 55%, #4516b5 100%);
+    }
+    .card-shadow {
+      box-shadow: 0 8px 24px -4px rgba(28, 17, 65, 0.06);
+    }
+    /* Custom Gold T Coin */
+        .t-coin {
+          background: url('asset/coin.webp') center / cover no-repeat;
+          box-shadow: 0 4px 8px rgba(245, 158, 11, 0.25);
+          border: none;
+        }
+        .t-coin-inner {
+          display: none;
+        }
+  </style>
+</head>
+<body class=" flex justify-center min-h-screen text-slate-900 antialiased">
+
+  <!-- Mobile App Container -->
+  <div class="w-full max-w-[430px] min-h-screen bg-[#f4f3fa] relative pb-24 overflow-x-hidden shadow-2xl">
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 transition-all duration-300 opacity-0 pointer-events-none translate-y-3">
+      <i class="fa-solid fa-circle-check text-emerald-400"></i>
+      <span id="toastMsg">Notification</span>
+    </div>
+
+    <!-- Top Purple Header Background -->
+    <div class="header-bg pt-5 pb-20 px-4">
+      <div class="flex items-center justify-between">
+        <!-- Left: Coin + Title -->
+        <div class="flex items-center gap-3">
+          <!-- Gold T Coin -->
+          <div class="w-12 h-12 rounded-full t-coin flex items-center justify-center shrink-0">
+            <div class="w-9 h-9 rounded-full t-coin-inner flex items-center justify-center">
+              <span class="text-amber-900 font-extrabold text-xl drop-shadow-[0_1px_1px_rgba(255,255,255,0.6)]">T</span>
+            </div>
+          </div>
+          <div>
+            <h1 class="text-white font-extrabold text-xl tracking-tight leading-tight">Refer & Earn</h1>
+            <p class="text-white/85 text-xs font-medium mt-0.5">Invite Friends <span class="mx-0.5">•</span> Earn Rewards</p>
+          </div>
+        </div>
+
+        <!-- Right: Masked Telegram Chat ID -->
+                <div class="flex items-center gap-2.5">
+                  <div class="flex items-center gap-2 bg-white/15 backdrop-blur-sm border border-white/10 rounded-full px-3 py-1.5">
+                    <i class="fa-brands fa-telegram text-white text-sm"></i>
+                    <span class="text-white text-xs font-bold tracking-wide">ID: *****6789</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Main Content Stack -->
+    <div class="px-3.5 -mt-14 space-y-3.5">
+
+      <!-- Your Wallet Card -->
+      <div class="bg-white rounded-3xl p-4 card-shadow">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="flex items-center gap-1.5 text-slate-800 font-bold text-sm">
+              <span>Your Wallet</span>
+              <i class="fa-regular fa-circle-question text-slate-400 text-xs cursor-pointer"></i>
+            </div>
+
+            <div class="flex items-center gap-3 mt-2">
+              <!-- Coin -->
+              <div class="w-11 h-11 rounded-full t-coin flex items-center justify-center shrink-0">
+                <div class="w-8 h-8 rounded-full t-coin-inner flex items-center justify-center">
+                  <span class="text-amber-900 font-extrabold text-lg">T</span>
+                </div>
+              </div>
+              <div>
+                <div class="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">1,250</div>
+                <div class="text-xs font-semibold text-slate-500 mt-1">≈ ₹125.00</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cashout Button -->
+                    <a href="withdraw.html" class="btn-purple text-white font-bold text-sm px-4 py-3.5 rounded-2xl flex items-center gap-2.5 active:scale-95 transition">
+            <i class="fa-solid fa-wallet text-base"></i>
+            <span>Cashout</span>
+            <i class="fa-solid fa-chevron-right text-xs opacity-80"></i>
+                    </a>
+        </div>
+
+        <!-- Minimum Cashout Bar -->
+        <div class="mt-4 bg-[#f5f3ff] rounded-xl px-3 py-2.5 flex items-center justify-between text-xs">
+          <div class="flex items-center gap-1.5">
+            <i class="fa-solid fa-crown text-amber-400 text-sm"></i>
+            <span class="text-slate-600 font-medium">Minimum cashout: <strong class="text-[#5925dc] font-bold">2,000 T (₹200)</strong></span>
+          </div>
+          <a href="#" class="text-[#5925dc] font-bold flex items-center gap-1 hover:underline">
+            <span>How it works?</span>
+            <i class="fa-solid fa-chevron-right text-[10px]"></i>
+          </a>
+        </div>
+      </div>
+
+      <!-- Responsive Stats Grid -->
+            <div class="grid grid-cols-3 gap-2">
+              <!-- Total Invites -->
+                    <div class="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl p-2.5 flex flex-col justify-between shadow-sm">
+                <div class="w-7 h-7 flex items-center justify-center text-emerald-600">
+                  <i class="fa-solid fa-users text-lg"></i>
+                </div>
+                <div class="mt-2">
+                  <div class="text-sm sm:text-base font-extrabold text-slate-900 leading-tight">12</div>
+                  <div class="text-[10px] font-semibold text-slate-600 flex items-center gap-0.5 mt-0.5">
+                    <span>Total Invites</span>
+                    <i class="fa-solid fa-chevron-right text-[8px] opacity-70"></i>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Per Referral -->
+                    <div class="bg-gradient-to-br from-amber-50 to-amber-100 rounded-2xl p-2.5 flex flex-col justify-between shadow-sm">
+                <div class="w-6 h-6 rounded-full t-coin flex items-center justify-center">
+                  <span class="text-amber-900 font-extrabold text-xs">T</span>
+                </div>
+                <div class="mt-2">
+                  <div class="text-sm sm:text-base font-extrabold text-slate-900 leading-tight">150 T</div>
+                  <div class="text-[10px] font-semibold text-slate-600 flex items-center gap-0.5 mt-0.5">
+                    <span>Per Referral</span>
+                    <i class="fa-solid fa-chevron-right text-[8px] opacity-70"></i>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Total Earned -->
+                    <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-2.5 flex flex-col justify-between shadow-sm">
+                <div class="w-7 h-7 flex items-center justify-center text-blue-600">
+                  <i class="fa-solid fa-gift text-lg"></i>
+                </div>
+                <div class="mt-2">
+                  <div class="text-sm sm:text-base font-extrabold text-slate-900 leading-tight">1,200 T</div>
+                  <div class="text-[10px] font-semibold text-slate-600 flex items-center gap-0.5 mt-0.5">
+                    <span>Total Earned</span>
+                    <i class="fa-solid fa-chevron-right text-[8px] opacity-70"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+      <!-- Promo Banner -->
+            <div class="rounded-2xl overflow-hidden shadow-lg">
+              <img src="asset/refer-earn.webp" alt="Invite Friends - Earn 150 T per Referral" class="w-full h-auto block" />
+            </div>
+
+      <!-- Your Invite Link Card -->
+            <div class="bg-white rounded-3xl p-4 card-shadow">
+              <div class="flex items-center gap-3 mb-3">
+                <div class="w-10 h-10 rounded-2xl bg-[#f2eeff] text-[#6d28d9] flex items-center justify-center shrink-0">
+                  <i class="fa-solid fa-link text-base"></i>
+                </div>
+                <div>
+                  <h3 class="font-extrabold text-sm text-slate-900 leading-tight">Your Invite Link</h3>
+                  <p class="text-[11px] text-slate-500 font-medium mt-0.5">
+                    Share this link with your friends and earn <span class="text-[#5925dc] font-bold">150 T</span> for each successful referral
+                  </p>
+                </div>
+              </div>
+
+              <!-- Link Input Box -->
+              <div class="bg-[#f4f4f8] rounded-2xl px-3.5 py-3 flex items-center justify-between border border-slate-200/80 mb-3">
+                <span id="inviteLink" class="text-xs font-semibold text-slate-800 truncate select-all">https://t.me/YourBot?start=12345</span>
+                <button onclick="copyInviteLink()" class="text-slate-500 hover:text-[#5925dc] ml-2 active:scale-90 transition p-1" title="Copy Link">
+                  <i id="copyIcon" class="fa-regular fa-copy text-base"></i>
+                </button>
+              </div>
+
+              <!-- Share Invite Link Button -->
+              <button class="btn-purple w-full text-white font-bold text-sm py-3.5 rounded-2xl flex items-center justify-center gap-2.5 active:scale-[0.98] transition">
+                <i class="fa-solid fa-share-nodes text-base"></i>
+                <span>Share Invite Link</span>
+              </button>
+            </div>
+
+      <!-- How to Earn? Card -->
+      <div class="bg-white rounded-2xl p-4 card-shadow">
+        <h3 class="font-extrabold text-sm text-slate-900 mb-3">How to Earn?</h3>
+
+        <div class="flex items-center justify-between gap-1">
+          <!-- Step 1 -->
+          <div class="flex items-center gap-2 flex-1">
+            <div class="w-9 h-9 rounded-full bg-[#eef0ff] text-[#5925dc] flex items-center justify-center shrink-0">
+              <i class="fa-solid fa-link text-sm"></i>
+            </div>
+            <div>
+              <div class="text-xs font-extrabold text-[#5925dc]">1</div>
+              <div class="text-[10px] font-medium text-slate-600 leading-tight">Share your<br />invite link</div>
+            </div>
+          </div>
+
+          <i class="fa-solid fa-chevron-right text-[10px] text-slate-400"></i>
+
+          <!-- Step 2 -->
+          <div class="flex items-center gap-2 flex-1">
+            <div class="w-9 h-9 rounded-full bg-[#eaf2ff] text-blue-600 flex items-center justify-center shrink-0">
+              <i class="fa-solid fa-users text-sm"></i>
+            </div>
+            <div>
+              <div class="text-xs font-extrabold text-[#5925dc]">2</div>
+              <div class="text-[10px] font-medium text-slate-600 leading-tight">Friend joins<br />using your link</div>
+            </div>
+          </div>
+
+          <i class="fa-solid fa-chevron-right text-[10px] text-slate-400"></i>
+
+          <!-- Step 3 -->
+          <div class="flex items-center gap-2 flex-1">
+            <div class="w-9 h-9 rounded-full bg-[#ffeef2] text-rose-500 flex items-center justify-center shrink-0">
+              <i class="fa-solid fa-gift text-sm"></i>
+            </div>
+            <div>
+              <div class="text-xs font-extrabold text-[#5925dc]">3</div>
+              <div class="text-[10px] font-medium text-slate-600 leading-tight">You get<br />150 T reward</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Activity Card -->
+      <div class="bg-white rounded-2xl p-4 card-shadow">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <i class="fa-regular fa-clock text-slate-500 text-sm"></i>
+            <h3 class="font-extrabold text-sm text-slate-900">Recent Activity</h3>
+          </div>
+          <a href="activity.html" class="text-xs font-bold text-[#5925dc] flex items-center gap-1 hover:underline">
+            <span>View All</span>
+            <i class="fa-solid fa-chevron-right text-[10px]"></i>
+          </a>
+        </div>
+
+        <div class="divide-y divide-slate-100">
+          <!-- Item 1 -->
+          <div class="py-2.5 first:pt-0 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-[#e8f8f0] text-emerald-600 flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-user-plus text-sm"></i>
+              </div>
+              <div>
+                <div class="text-xs font-extrabold text-slate-900">Referral Reward</div>
+                <div class="text-[11px] font-medium text-slate-500 mt-0.5">@rahul123 joined using your link</div>
+              </div>
+            </div>
+            <div class="text-right">
+                      <div class="text-xs font-extrabold text-emerald-600">+150 T</div>
+              <div class="text-[10px] font-medium text-slate-400 mt-0.5">29 Oct 2026, 10:24 AM</div>
+            </div>
+          </div>
+
+          <!-- Item 2 -->
+          <div class="py-2.5 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                      <div class="w-10 h-10 rounded-full bg-[#eaf2ff] text-blue-600 flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-user-plus text-sm"></i>
+              </div>
+              <div>
+                <div class="text-xs font-extrabold text-slate-900">Referral Reward</div>
+                <div class="text-[11px] font-medium text-slate-500 mt-0.5">@priya99 joined using your link</div>
+              </div>
+            </div>
+            <div class="text-right">
+                      <div class="text-xs font-extrabold text-emerald-600">+150 T</div>
+              <div class="text-[10px] font-medium text-slate-400 mt-0.5">28 Oct 2026, 06:12 PM</div>
+            </div>
+          </div>
+
+          <!-- Item 3 -->
+          <div class="py-2.5 last:pb-0 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                      <div class="w-10 h-10 rounded-full bg-[#fff6e4] text-amber-600 flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-user-plus text-sm"></i>
+              </div>
+              <div>
+                <div class="text-xs font-extrabold text-slate-900">Referral Reward</div>
+                <div class="text-[11px] font-medium text-slate-500 mt-0.5">@amit_k joined using your link</div>
+              </div>
+            </div>
+            <div class="text-right">
+                      <div class="text-xs font-extrabold text-emerald-600">+150 T</div>
+              <div class="text-[10px] font-medium text-slate-400 mt-0.5">27 Oct 2026, 11:03 AM</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] px-6 pt-2.5 pb-2 flex items-center justify-around z-50">
+      <!-- Home (Active) -->
+            <a href="index.html" class="flex flex-col items-center gap-1 text-[#5925dc] relative pb-1.5 w-20">
+        <i class="fa-solid fa-house text-lg"></i>
+        <span class="text-[11px] font-bold">Home</span>
+        <span class="absolute bottom-0 w-16 h-1 bg-[#5925dc] rounded-full"></span>
+      </a>
+
+      <!-- Invite -->
+            <a href="refer-earn.html" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
+        <i class="fa-solid fa-share-nodes text-lg"></i>
+        <span class="text-[11px] font-semibold">Invite</span>
+      </a>
+
+      <!-- Leaderboard -->
+            <a href="leaderboard.html" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
+        <i class="fa-solid fa-trophy text-lg"></i>
+        <span class="text-[11px] font-semibold">Ranking</span>
+      </a>
+
+            <!-- Withdraw -->
+                  <a href="withdraw.html" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
+              <i class="fa-solid fa-wallet text-lg"></i>
+              <span class="text-[11px] font-semibold">Withdraw</span>
+            </a>
+          </nav>
+
+  </div>
+
+  <!-- Copy Link Script -->
+  <script>
+      let toastTimeout;
+
+      function showToast(message) {
+        const toast = document.getElementById('toast');
+        const toastMsg = document.getElementById('toastMsg');
+        toastMsg.textContent = message;
+
+        toast.classList.remove('opacity-0', 'translate-y-3');
+        toast.classList.add('opacity-100', 'translate-y-0');
+
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+          toast.classList.remove('opacity-100', 'translate-y-0');
+          toast.classList.add('opacity-0', 'translate-y-3');
+        }, 2000);
+      }
+
+      function copyInviteLink() {
+        const linkText = document.getElementById('inviteLink').innerText;
+        const icon = document.getElementById('copyIcon');
+        navigator.clipboard.writeText(linkText).then(() => {
+          icon.className = 'fa-solid fa-check text-emerald-600 text-sm';
+          showToast('Invite link copied!');
+          setTimeout(() => {
+            icon.className = 'fa-regular fa-copy text-sm';
+          }, 1500);
+        });
+      }
+    </script>
+</body>
+</html>
