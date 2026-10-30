@@ -48,15 +48,15 @@
 
     <!-- Navigation -->
     <nav class="mt-2 px-3 space-y-1.5 text-sm font-medium flex-1 overflow-y-auto">
-      <a href="broadcast.html" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
+      <a href="broadcast.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
         <i class="fa-solid fa-paper-plane text-slate-400 w-5 text-center text-base"></i>
         <span>Broadcast</span>
       </a>
-      <a href="withdrawal.html" class="flex items-center gap-3.5 px-4 py-3 rounded-xl bg-gradient-to-r from-[#6c3cf7] to-[#5a29e4] text-white shadow-lg shadow-indigo-600/30">
+      <a href="withdrawal.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl bg-gradient-to-r from-[#6c3cf7] to-[#5a29e4] text-white shadow-lg shadow-indigo-600/30">
         <i class="fa-solid fa-wallet text-white w-5 text-center text-base"></i>
         <span>Withdrawals</span>
       </a>
-      <a href="settings.html" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
+      <a href="settings.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
         <i class="fa-solid fa-gear text-slate-400 w-5 text-center text-base"></i>
         <span>Settings</span>
       </a>

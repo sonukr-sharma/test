@@ -464,7 +464,7 @@
           setLoading(false);
           if (password.value === 'admin123') {
             showToast('Signed in successfully. Redirecting…', 'success');
-            setTimeout(function () { window.location.href = '../broadcast.html'; }, 900);
+            setTimeout(function () { window.location.href = '../broadcast.php'; }, 900);
           } else {
             showFormError('Incorrect email or password. Please try again.');
             password.value = '';

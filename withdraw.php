@@ -154,25 +154,25 @@
     <!-- Bottom Navigation Bar -->
     <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] px-6 pt-2.5 pb-2 flex items-center justify-around z-50">
       <!-- Home -->
-      <a href="index.html" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
+      <a href="index.php" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
         <i class="fa-solid fa-house text-lg"></i>
         <span class="text-[11px] font-semibold">Home</span>
       </a>
 
       <!-- Invite -->
-      <a href="refer-earn.html" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
+      <a href="refer-earn.php" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
         <i class="fa-solid fa-share-nodes text-lg"></i>
         <span class="text-[11px] font-semibold">Invite</span>
       </a>
 
       <!-- Leaderboard -->
-      <a href="leaderboard.html" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
+      <a href="leaderboard.php" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
         <i class="fa-solid fa-trophy text-lg"></i>
         <span class="text-[11px] font-semibold">Ranking</span>
       </a>
 
       <!-- Withdraw (Active) -->
-      <a href="withdraw.html" class="flex flex-col items-center gap-1 text-[#5925dc] relative pb-1.5 w-20">
+      <a href="withdraw.php" class="flex flex-col items-center gap-1 text-[#5925dc] relative pb-1.5 w-20">
         <i class="fa-solid fa-wallet text-lg"></i>
         <span class="text-[11px] font-bold">Withdraw</span>
         <span class="absolute bottom-0 w-16 h-1 bg-[#5925dc] rounded-full"></span>

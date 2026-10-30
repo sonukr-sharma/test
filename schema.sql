@@ -5,10 +5,10 @@
 --
 --  Covers:
 --    * Telegram bot users, wallets and referral earnings   (index, refer-earn, activity, leaderboard, withdraw)
---    * Withdrawal requests + admin review workflow         (adm/withdrawal.html)
---    * Broadcast campaigns, buttons and delivery stats     (adm/broadcast.html)
---    * Platform / referral / withdrawal / bonus settings   (adm/settings.html)
---    * Admin accounts, sessions and audit trail            (adm/auth/index.html)
+--    * Withdrawal requests + admin review workflow         (adm/withdrawal.php)
+--    * Broadcast campaigns, buttons and delivery stats     (adm/broadcast.php)
+--    * Platform / referral / withdrawal / bonus settings   (adm/settings.php)
+--    * Admin accounts, sessions and audit trail            (adm/auth/index.php)
 --
 --  Import:  mysql -u root -p < schema.sql
 -- =====================================================================
@@ -23,7 +23,7 @@ SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- =====================================================================
---  1. ADMINS  (adm/auth/index.html)
+--  1. ADMINS  (adm/auth/index.php)
 -- =====================================================================
 
 DROP TABLE IF EXISTS `admins`;
@@ -63,7 +63,7 @@ CREATE TABLE `admin_sessions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================================
---  2. USERS  (Telegram bot users — index.html, withdraw.html)
+--  2. USERS  (Telegram bot users — index.php, withdraw.php)
 -- =====================================================================
 
 DROP TABLE IF EXISTS `users`;
@@ -97,7 +97,7 @@ CREATE TABLE `users` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================================
---  3. REFERRALS  (refer-earn.html, activity.html, leaderboard.html)
+--  3. REFERRALS  (refer-earn.php, activity.php, leaderboard.php)
 -- =====================================================================
 
 DROP TABLE IF EXISTS `referrals`;
@@ -121,7 +121,7 @@ CREATE TABLE `referrals` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================================
---  4. WALLET LEDGER  (activity.html, index.html "Recent Activity")
+--  4. WALLET LEDGER  (activity.php, index.php "Recent Activity")
 -- =====================================================================
 
 DROP TABLE IF EXISTS `wallet_transactions`;
@@ -146,7 +146,7 @@ CREATE TABLE `wallet_transactions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================================
---  5. WITHDRAWALS  (withdraw.html + adm/withdrawal.html)
+--  5. WITHDRAWALS  (withdraw.php + adm/withdrawal.php)
 -- =====================================================================
 
 DROP TABLE IF EXISTS `withdrawals`;
@@ -200,7 +200,7 @@ CREATE TABLE `withdrawal_status_history` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================================
---  6. BROADCASTS  (adm/broadcast.html)
+--  6. BROADCASTS  (adm/broadcast.php)
 -- =====================================================================
 
 DROP TABLE IF EXISTS `broadcasts`;
@@ -261,7 +261,7 @@ CREATE TABLE `broadcast_recipients` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================================
---  7. SETTINGS  (adm/settings.html — key/value store)
+--  7. SETTINGS  (adm/settings.php — key/value store)
 -- =====================================================================
 
 DROP TABLE IF EXISTS `settings`;
@@ -318,7 +318,7 @@ SELECT
 FROM `users` `u`
 WHERE `u`.`status` <> 'blocked';
 
--- Withdrawal KPI cards on adm/withdrawal.html
+-- Withdrawal KPI cards on adm/withdrawal.php
 CREATE OR REPLACE VIEW `v_withdrawal_stats` AS
 SELECT
   COUNT(*)                                                        AS `total_requests`,
@@ -329,7 +329,7 @@ SELECT
   COALESCE(SUM(CASE WHEN `status` = 'pending'   THEN `amount_t` END), 0) AS `pending_amount_t`
 FROM `withdrawals`;
 
--- Broadcast KPI cards on adm/broadcast.html
+-- Broadcast KPI cards on adm/broadcast.php
 CREATE OR REPLACE VIEW `v_broadcast_stats` AS
 SELECT
   COUNT(*)                        AS `total_broadcasts`,
@@ -348,7 +348,7 @@ INSERT INTO `admins` (`name`, `username`, `email`, `password_hash`, `role`) VALU
   ('Super Admin', 'admin', 'admin@referearn.com',
    '$2y$10$e0NRzP0Yl6bJm2s0hKQ0IuYQ8m2r0kQ0IuYQ8m2r0kQ0IuYQ8m2r0', 'super_admin');
 
--- Settings mirrored from adm/settings.html
+-- Settings mirrored from adm/settings.php
 INSERT INTO `settings` (`key`, `value`, `data_type`, `group_name`, `label`) VALUES
   ('referral_reward_t',        '150',                          'decimal', 'referral',  'Reward per Referral (T)'),
   ('min_referrals_withdrawal', '5',                            'integer', 'referral',  'Minimum Referrals per Withdrawal'),

@@ -105,7 +105,7 @@
           </div>
 
           <!-- Cashout Button -->
-                    <a href="withdraw.html" class="btn-purple text-white font-bold text-sm px-4 py-3.5 rounded-2xl flex items-center gap-2.5 active:scale-95 transition">
+                    <a href="withdraw.php" class="btn-purple text-white font-bold text-sm px-4 py-3.5 rounded-2xl flex items-center gap-2.5 active:scale-95 transition">
             <i class="fa-solid fa-wallet text-base"></i>
             <span>Cashout</span>
             <i class="fa-solid fa-chevron-right text-xs opacity-80"></i>
@@ -255,7 +255,7 @@
             <i class="fa-regular fa-clock text-slate-500 text-sm"></i>
             <h3 class="font-extrabold text-sm text-slate-900">Recent Activity</h3>
           </div>
-          <a href="activity.html" class="text-xs font-bold text-[#5925dc] flex items-center gap-1 hover:underline">
+          <a href="activity.php" class="text-xs font-bold text-[#5925dc] flex items-center gap-1 hover:underline">
             <span>View All</span>
             <i class="fa-solid fa-chevron-right text-[10px]"></i>
           </a>
@@ -320,26 +320,26 @@
     <!-- Bottom Navigation Bar -->
     <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] px-6 pt-2.5 pb-2 flex items-center justify-around z-50">
       <!-- Home (Active) -->
-            <a href="index.html" class="flex flex-col items-center gap-1 text-[#5925dc] relative pb-1.5 w-20">
+            <a href="index.php" class="flex flex-col items-center gap-1 text-[#5925dc] relative pb-1.5 w-20">
         <i class="fa-solid fa-house text-lg"></i>
         <span class="text-[11px] font-bold">Home</span>
         <span class="absolute bottom-0 w-16 h-1 bg-[#5925dc] rounded-full"></span>
       </a>
 
       <!-- Invite -->
-            <a href="refer-earn.html" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
+            <a href="refer-earn.php" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
         <i class="fa-solid fa-share-nodes text-lg"></i>
         <span class="text-[11px] font-semibold">Invite</span>
       </a>
 
       <!-- Leaderboard -->
-            <a href="leaderboard.html" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
+            <a href="leaderboard.php" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
         <i class="fa-solid fa-trophy text-lg"></i>
         <span class="text-[11px] font-semibold">Ranking</span>
       </a>
 
             <!-- Withdraw -->
-                  <a href="withdraw.html" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
+                  <a href="withdraw.php" class="flex flex-col items-center gap-1 text-slate-500 hover:text-[#5925dc] transition pb-1.5 w-20">
               <i class="fa-solid fa-wallet text-lg"></i>
               <span class="text-[11px] font-semibold">Withdraw</span>
             </a>
