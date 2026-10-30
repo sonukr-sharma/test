@@ -22,36 +22,105 @@ declare(strict_types=1);
 
 define('APP_NAME', 'Refer & Earn');
 
+/**
+ * Read an environment variable, falling back to a default.
+ *
+ * Works with real env vars (Apache SetEnv, Docker, systemd, cPanel) and with
+ * a `.env` file placed next to this file.
+ */
+function env(string $key, ?string $default = null): ?string
+{
+    static $fileVars = null;
+
+    $value = getenv($key);
+
+    if ($value !== false && $value !== '') {
+        return $value;
+    }
+
+    if (isset($_SERVER[$key]) && $_SERVER[$key] !== '') {
+        return (string) $_SERVER[$key];
+    }
+
+    if (isset($_ENV[$key]) && $_ENV[$key] !== '') {
+        return (string) $_ENV[$key];
+    }
+
+    if ($fileVars === null) {
+        $fileVars = [];
+
+        $path = __DIR__ . '/.env';
+
+        if (is_readable($path)) {
+            foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+                $line = trim($line);
+
+                if ($line === '' || str_starts_with($line, '#') || !str_contains($line, '=')) {
+                    continue;
+                }
+
+                [$k, $v] = explode('=', $line, 2);
+                $k = trim($k);
+                $v = trim($v);
+
+                if (strlen($v) > 1 && ($v[0] === '"' || $v[0] === "'") && $v[0] === substr($v, -1)) {
+                    $v = substr($v, 1, -1);
+                }
+
+                $fileVars[$k] = $v;
+            }
+        }
+    }
+
+    return $fileVars[$key] ?? $default;
+}
+
 $host    = $_SERVER['HTTP_HOST'] ?? '';
 $isLocal = $host === ''
     || preg_match('/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i', $host) === 1;
 
-define('APP_ENV', $isLocal ? 'local' : 'production');
-define('APP_DEBUG', APP_ENV === 'local');
-define('APP_TIMEZONE', 'Asia/Kolkata');
+// APP_ENV=production forces production mode even on localhost (useful for
+// testing the real error handling before deploying).
+$forcedEnv = env('APP_ENV');
 
-// Absolute base URL, no trailing slash.
-define('APP_URL', $isLocal
-    ? 'http://' . ($host !== '' ? $host : 'localhost')
-    : 'https://' . $host);
+if ($forcedEnv !== null && $forcedEnv !== '') {
+    $isLocal = strtolower($forcedEnv) === 'local';
+}
+
+define('APP_ENV', $isLocal ? 'local' : 'production');
+define('APP_DEBUG', filter_var(env('APP_DEBUG', $isLocal ? '1' : '0'), FILTER_VALIDATE_BOOLEAN));
+define('APP_TIMEZONE', env('APP_TIMEZONE', 'Asia/Kolkata') ?? 'Asia/Kolkata');
+
+// Absolute base URL, no trailing slash. Set APP_URL in production so links and
+// the Telegram webhook URL are correct behind a proxy or subdirectory.
+$configuredUrl = rtrim((string) env('APP_URL', ''), '/');
+
+define('APP_URL', $configuredUrl !== ''
+    ? $configuredUrl
+    : ($isLocal
+        ? 'http://' . ($host !== '' ? $host : 'localhost')
+        : 'https://' . $host));
 
 /* ---------------------------------------------------------------------
- |  2. Database  (XAMPP defaults)
+ |  2. Database
+ |
+ |  Defaults match a stock XAMPP install. Override them in production with
+ |  environment variables or a .env file — never commit real credentials.
  * ------------------------------------------------------------------- */
 
-define('DB_HOST', '127.0.0.1');
-define('DB_PORT', '3306');
-define('DB_NAME', 'refer_earn');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+define('DB_HOST', env('DB_HOST', '127.0.0.1') ?? '127.0.0.1');
+define('DB_PORT', env('DB_PORT', '3306') ?? '3306');
+define('DB_NAME', env('DB_NAME', 'refer_earn') ?? 'refer_earn');
+define('DB_USER', env('DB_USER', 'root') ?? 'root');
+define('DB_PASS', env('DB_PASS', '') ?? '');
 define('DB_CHARSET', 'utf8mb4');
 
 /* ---------------------------------------------------------------------
  |  3. Session
  * ------------------------------------------------------------------- */
 
-define('SESSION_NAME', 'refer_earn_sid');
-define('SESSION_LIFETIME', 60 * 60 * 8); // 8 hours
+define('SESSION_NAME', env('SESSION_NAME', 'refer_earn_sid') ?? 'refer_earn_sid');
+define('SESSION_LIFETIME', (int) (env('SESSION_LIFETIME', '28800') ?? 28800)); // 8 hours
 
 /* ---------------------------------------------------------------------
  |  4. Bootstrap
@@ -62,6 +131,33 @@ date_default_timezone_set(APP_TIMEZONE);
 error_reporting(E_ALL);
 ini_set('display_errors', APP_DEBUG ? '1' : '0');
 ini_set('log_errors', '1');
+
+// In production, log to a file outside the web root when possible.
+if (!APP_DEBUG) {
+    $logDir = env('LOG_DIR', '');
+
+    if ($logDir !== null && $logDir !== '' && is_dir($logDir) && is_writable($logDir)) {
+        ini_set('error_log', rtrim($logDir, '/\\') . DIRECTORY_SEPARATOR . 'php-error.log');
+    }
+}
+
+// Security headers for every response.
+if (PHP_SAPI !== 'cli' && !headers_sent()) {
+    header_remove('X-Powered-By');
+    header('X-Content-Type-Options: nosniff');
+    header('X-Frame-Options: SAMEORIGIN');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
+
+    // HSTS only makes sense (and is only honoured) over a real HTTPS request.
+    $httpsOn = (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+        || (int) ($_SERVER['SERVER_PORT'] ?? 0) === 443;
+
+    if (!$isLocal && $httpsOn) {
+        header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+    }
+}
 
 if (PHP_SAPI !== 'cli' && !defined('APP_NO_SESSION') && session_status() === PHP_SESSION_NONE) {
     session_name(SESSION_NAME);

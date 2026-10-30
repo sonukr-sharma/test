@@ -1,0 +1,31 @@
+# =====================================================================
+#  Refer & Earn — ignore rules
+# =====================================================================
+
+# --- Secrets ---------------------------------------------------------
+.env
+.env.local
+.env.*.local
+
+# --- Logs & caches ---------------------------------------------------
+*.log
+error_log
+php-error.log
+*.cache
+
+# --- OS / editor noise -----------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*~
+
+# --- Dependencies (if you ever add Composer) -------------------------
+/vendor/
+composer.lock
+
+# --- Local uploads / temp --------------------------------------------
+/tmp/
+/uploads/

@@ -1,0 +1,68 @@
+# =====================================================================
+#  Refer & Earn — Apache configuration
+#
+#  Works on Apache 2.4 (XAMPP, cPanel, VPS). If your host uses nginx,
+#  see DEPLOYMENT.md for the equivalent server block.
+# =====================================================================
+
+# --- Default document -------------------------------------------------
+DirectoryIndex index.php index.html
+
+# --- No directory listings --------------------------------------------
+Options -Indexes
+
+# --- Block dotfiles (.env, .git, ...) ---------------------------------
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# --- Block the schema dump and docs from the web ----------------------
+<FilesMatch "\.(sql|md|example|log|ini|bak|old|sh)$">
+    Require all denied
+</FilesMatch>
+
+# --- config.php is include-only, never a web endpoint -----------------
+<Files "config.php">
+    Require all denied
+</Files>
+
+# --- Security headers -------------------------------------------------
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+
+    # Enable only after HTTPS is confirmed working:
+    # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+</IfModule>
+
+# --- Compression ------------------------------------------------------
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/css text/xml
+    AddOutputFilterByType DEFLATE application/javascript application/json
+    AddOutputFilterByType DEFLATE image/svg+xml
+</IfModule>
+
+# --- Browser caching for static assets --------------------------------
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/webp  "access plus 30 days"
+    ExpiresByType image/png   "access plus 30 days"
+    ExpiresByType image/jpeg  "access plus 30 days"
+    ExpiresByType image/svg+xml "access plus 30 days"
+    ExpiresByType text/css    "access plus 7 days"
+    ExpiresByType application/javascript "access plus 7 days"
+</IfModule>
+
+# --- Force HTTPS (uncomment once the certificate is installed) --------
+# <IfModule mod_rewrite.c>
+#     RewriteEngine On
+#     RewriteCond %{HTTPS} !=on
+#     RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+# </IfModule>
+
+# --- Custom error pages -----------------------------------------------
+# 403 is intentionally left to Apache so blocked files return an empty body
+# instead of re-entering the app (which would itself return 403).
+ErrorDocument 404 /index.php
