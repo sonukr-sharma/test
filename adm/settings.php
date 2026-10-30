@@ -31,6 +31,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'allow_registration'           => 'boolean',
             'withdrawals_enabled'          => 'boolean',
             'withdrawal_processing_hours'  => 'integer',
+            'require_channel_join'         => 'boolean',
+            'require_bot_start'            => 'boolean',
+            'channel_gate_strict'          => 'boolean',
+            'channel_gate_message'         => 'string',
         ];
 
         try {
@@ -52,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'bot'        => ['bot_token', 'bot_web_app_url'],
                 'bonus'      => ['signup_bonus_t', 'enable_signup_bonus'],
                 'platform'   => ['allow_registration', 'withdrawals_enabled'],
+                'gate'       => ['require_channel_join', 'require_bot_start', 'channel_gate_strict', 'channel_gate_message'],
             ];
 
             foreach ($fields as $key => $type) {
@@ -172,6 +177,10 @@ $s = settings();
       <a href="withdrawal.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
         <i class="fa-solid fa-wallet text-slate-400 w-5 text-center text-base"></i>
         <span>Withdrawals</span>
+      </a>
+      <a href="channels.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
+        <i class="fa-solid fa-tower-broadcast text-slate-400 w-5 text-center text-base"></i>
+        <span>Channels</span>
       </a>
       <a href="settings.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl bg-gradient-to-r from-[#6c3cf7] to-[#5a29e4] text-white shadow-lg shadow-indigo-600/30">
         <i class="fa-solid fa-gear text-white w-5 text-center text-base"></i>
@@ -408,6 +417,11 @@ $s = settings();
                       </button>
                     </div>
                   </div>
+
+                  <a href="../webhook/setup.php" class="flex items-center justify-center gap-2 w-full px-3.5 py-2 rounded-lg border border-[#1d9bf0]/30 bg-[#e5f4ff]/60 text-xs font-semibold text-[#1d9bf0] hover:bg-[#e5f4ff] transition-colors">
+                    <i class="fa-solid fa-plug-circle-check text-xs"></i>
+                    Configure Telegram Webhook
+                  </a>
                 </div>
               </div>
             </div>
@@ -481,6 +495,76 @@ $s = settings();
                       <div class="w-10 h-5 bg-slate-300 rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6339f9]"></div>
                     </label>
                   </div>
+                </div>
+              </div>
+
+              <!-- Save Changes Button -->
+              <div class="mt-5 flex justify-end">
+                <button type="submit" class="w-full sm:w-auto justify-center bg-gradient-to-r from-[#6c3cf7] to-[#5a29e4] hover:opacity-95 text-white font-medium text-xs px-5 py-3 sm:py-2.5 rounded-xl shadow-md shadow-indigo-500/25 flex items-center gap-2 transition">
+                  <i class="fa-solid fa-floppy-disk"></i>
+                  <span>Save Changes</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 7. Access Gate -->
+            <div class="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 flex flex-col justify-between">
+              <div>
+                <!-- Card Header -->
+                <div class="flex items-center gap-3.5 mb-6">
+                  <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#f2edff] text-[#6d37f7] flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-lock text-base sm:text-lg"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-sm sm:text-base font-bold text-slate-900">Access Gate</h3>
+                    <p class="text-xs text-slate-500">Require the bot and channel joins before the app opens.</p>
+                  </div>
+                </div>
+
+                <!-- Toggle Rows -->
+                <div class="space-y-4">
+                  <div class="flex items-center justify-between gap-2">
+                    <div>
+                      <span class="text-xs font-medium text-slate-800">Require /start First</span>
+                      <p class="text-[11px] text-slate-400 mt-0.5">Block the mini app until the user messages the bot.</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input type="checkbox" name="require_bot_start" value="1" <?= !empty($s['require_bot_start']) ? 'checked' : '' ?> class="sr-only peer">
+                      <div class="w-10 h-5 bg-slate-300 rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6339f9]"></div>
+                    </label>
+                  </div>
+
+                  <div class="flex items-center justify-between gap-2">
+                    <div>
+                      <span class="text-xs font-medium text-slate-800">Require Channel Membership</span>
+                      <p class="text-[11px] text-slate-400 mt-0.5">Users must join every active channel.</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input type="checkbox" name="require_channel_join" value="1" <?= !empty($s['require_channel_join']) ? 'checked' : '' ?> class="sr-only peer">
+                      <div class="w-10 h-5 bg-slate-300 rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6339f9]"></div>
+                    </label>
+                  </div>
+
+                  <div class="flex items-center justify-between gap-2">
+                    <div>
+                      <span class="text-xs font-medium text-slate-800">Strict Mode</span>
+                      <p class="text-[11px] text-slate-400 mt-0.5">Block users when membership cannot be verified.</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input type="checkbox" name="channel_gate_strict" value="1" <?= !empty($s['channel_gate_strict']) ? 'checked' : '' ?> class="sr-only peer">
+                      <div class="w-10 h-5 bg-slate-300 rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6339f9]"></div>
+                    </label>
+                  </div>
+
+                  <div>
+                    <label class="block text-xs font-medium text-slate-700 mb-1">Gate Message</label>
+                    <textarea name="channel_gate_message" rows="2" class="w-full px-3.5 py-2 text-xs text-slate-600 rounded-lg border border-slate-200 bg-slate-50/70 focus:outline-none focus:border-indigo-500 resize-none"><?= e((string) $s['channel_gate_message']) ?></textarea>
+                  </div>
+
+                  <a href="channels.php" class="flex items-center justify-center gap-2 w-full px-3.5 py-2 rounded-lg border border-[#6d37f7]/30 bg-[#f2edff]/60 text-xs font-semibold text-[#6d37f7] hover:bg-[#f2edff] transition-colors">
+                    <i class="fa-solid fa-tower-broadcast text-xs"></i>
+                    Manage Required Channels
+                  </a>
                 </div>
               </div>
 

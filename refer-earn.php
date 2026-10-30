@@ -1,9 +1,43 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/config.php';
+
+$user = require_onboarded_user();
+
+$rewardPerReferral = (float) setting('referral_reward_t', 150);
+$signupBonusT      = (float) setting('signup_bonus_t', 50);
+$totalEarnedT      = (float) $user['total_earned_t'];
+$referralCount     = (int) $user['referral_count'];
+$myInviteLink      = invite_link($user);
+
+$shareText = rawurlencode('Join Refer & Earn and get ' . t_format($signupBonusT) . ' signup bonus!');
+$shareUrl  = rawurlencode($myInviteLink);
+
+$recentReferrals = [];
+try {
+    $stmt = db()->prepare(
+        'SELECT `r`.`reward_t`, `r`.`status`, `r`.`credited_at`, `r`.`created_at`,
+                `u`.`username`, `u`.`first_name`, `u`.`telegram_id`
+           FROM `referrals` `r`
+           JOIN `users` `u` ON `u`.`id` = `r`.`referee_id`
+          WHERE `r`.`referrer_id` = :uid
+          ORDER BY `r`.`created_at` DESC, `r`.`id` DESC
+          LIMIT 5'
+    );
+    $stmt->execute([':uid' => $user['id']]);
+    $recentReferrals = $stmt->fetchAll();
+} catch (Throwable $e) {
+    error_log('refer-earn.php referrals failed: ' . $e->getMessage());
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Invite Friends</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Font Awesome 6 CDN -->
@@ -73,7 +107,7 @@
                 <div class="flex items-center gap-2.5">
                   <div class="flex items-center gap-2 bg-white/15 backdrop-blur-sm border border-white/10 rounded-full px-3 py-1.5">
                     <i class="fa-brands fa-telegram text-white text-sm"></i>
-                    <span class="text-white text-xs font-bold tracking-wide">ID: *****6789</span>
+                    <span class="text-white text-xs font-bold tracking-wide">ID: <?= e(mask_telegram_id($user['telegram_id'])) ?></span>
                   </div>
                 </div>
               </div>
@@ -96,21 +130,21 @@
           <div>
             <h3 class="font-extrabold text-sm text-slate-900 leading-tight">Your Invite Link</h3>
             <p class="text-[11px] text-slate-500 font-medium mt-0.5">
-              Share this link with your friends and earn <span class="text-[#5925dc] font-bold">150 T</span> for each successful referral
+              Share this link with your friends and earn <span class="text-[#5925dc] font-bold"><?= e(t_format($rewardPerReferral)) ?></span> for each successful referral
             </p>
           </div>
         </div>
 
         <!-- Link Input Box -->
         <div class="bg-[#f4f4f8] rounded-2xl px-3.5 py-3 flex items-center justify-between border border-slate-200/80 mb-3">
-          <span id="inviteLink" class="text-xs font-semibold text-slate-800 truncate select-all">https://t.me/YourBot?start=12345</span>
+          <span id="inviteLink" class="text-xs font-semibold text-slate-800 truncate select-all"><?= e($myInviteLink) ?></span>
           <button onclick="copyInviteLink()" class="text-slate-500 hover:text-[#5925dc] ml-2 active:scale-90 transition p-1" title="Copy Link">
             <i id="copyIcon" class="fa-regular fa-copy text-base"></i>
           </button>
         </div>
 
         <!-- Share Invite Link Button -->
-        <button class="btn-purple w-full text-white font-bold text-sm py-3.5 rounded-2xl flex items-center justify-center gap-2.5 active:scale-[0.98] transition">
+        <button onclick="shareInviteLink()" class="btn-purple w-full text-white font-bold text-sm py-3.5 rounded-2xl flex items-center justify-center gap-2.5 active:scale-[0.98] transition">
           <i class="fa-solid fa-share-nodes text-base"></i>
           <span>Share Invite Link</span>
         </button>
@@ -120,14 +154,14 @@
       <div class="bg-white rounded-3xl p-4 card-shadow">
         <div class="grid grid-cols-5 gap-2 text-center">
           <!-- Telegram -->
-          <a href="#" class="flex flex-col items-center gap-1.5 group">
+          <a href="https://t.me/share/url?url=<?= e($shareUrl) ?>&text=<?= e($shareText) ?>" target="_blank" rel="noopener" class="flex flex-col items-center gap-1.5 group">
             <div class="w-12 h-12 rounded-2xl bg-[#e7f3ff] text-[#0088cc] flex items-center justify-center group-hover:scale-105 transition shadow-sm">
               <i class="fa-brands fa-telegram text-xl"></i>
             </div>
             <span class="text-[11px] font-semibold text-slate-700">Telegram</span>
           </a>
           <!-- WhatsApp -->
-          <a href="#" class="flex flex-col items-center gap-1.5 group">
+          <a href="https://wa.me/?text=<?= e($shareText . '%20' . $shareUrl) ?>" target="_blank" rel="noopener" class="flex flex-col items-center gap-1.5 group">
             <div class="w-12 h-12 rounded-2xl bg-[#e8f8f0] text-[#25d366] flex items-center justify-center group-hover:scale-105 transition shadow-sm">
               <i class="fa-brands fa-whatsapp text-xl"></i>
             </div>
@@ -141,19 +175,19 @@
             <span class="text-[11px] font-semibold text-slate-700">Copy Link</span>
           </button>
           <!-- X (Twitter) -->
-          <a href="#" class="flex flex-col items-center gap-1.5 group">
+          <a href="https://twitter.com/intent/tweet?url=<?= e($shareUrl) ?>&text=<?= e($shareText) ?>" target="_blank" rel="noopener" class="flex flex-col items-center gap-1.5 group">
             <div class="w-12 h-12 rounded-2xl bg-[#f0f0f2] text-slate-900 flex items-center justify-center group-hover:scale-105 transition shadow-sm">
               <i class="fa-brands fa-x-twitter text-lg"></i>
             </div>
             <span class="text-[11px] font-semibold text-slate-700">X (Twitter)</span>
           </a>
           <!-- More -->
-          <a href="#" class="flex flex-col items-center gap-1.5 group">
+          <button onclick="shareInviteLink()" class="flex flex-col items-center gap-1.5 group">
             <div class="w-12 h-12 rounded-2xl bg-[#f4f4f8] text-slate-600 flex items-center justify-center group-hover:scale-105 transition shadow-sm">
               <i class="fa-solid fa-ellipsis text-base"></i>
             </div>
             <span class="text-[11px] font-semibold text-slate-700">More</span>
-          </a>
+          </button>
         </div>
       </div>
 
@@ -209,7 +243,7 @@
                       </div>
                       <div>
                         <div class="text-xs font-extrabold text-slate-900">Get Reward</div>
-                        <div class="text-[10px] font-medium text-slate-500 leading-tight mt-0.5">You get 150 T per successful referral</div>
+                        <div class="text-[10px] font-medium text-slate-500 leading-tight mt-0.5">You get <?= e(t_format($rewardPerReferral)) ?> per successful referral</div>
                       </div>
                     </div>
         </div>
@@ -232,7 +266,7 @@
                       <i class="fa-solid fa-users text-lg"></i>
                     </div>
                     <div class="mt-2">
-                      <div class="text-base font-extrabold text-slate-900 leading-tight">12</div>
+                      <div class="text-base font-extrabold text-slate-900 leading-tight"><?= e(number_format($referralCount)) ?></div>
                       <div class="text-[10px] font-semibold text-slate-600 flex items-center gap-0.5 mt-0.5 whitespace-nowrap">
                         <span>Total Invites</span>
                         <i class="fa-solid fa-chevron-right text-[8px] opacity-70"></i>
@@ -246,7 +280,7 @@
               <span class="text-amber-900 font-extrabold text-xs">T</span>
             </div>
             <div class="mt-2">
-              <div class="text-base font-extrabold text-slate-900 leading-tight">150 T</div>
+              <div class="text-base font-extrabold text-slate-900 leading-tight"><?= e(t_format($rewardPerReferral)) ?></div>
               <div class="text-[10px] font-semibold text-slate-600 flex items-center gap-0.5 mt-0.5 whitespace-nowrap">
                 <span>Per Referral</span>
                 <i class="fa-solid fa-chevron-right text-[8px] opacity-70"></i>
@@ -260,7 +294,7 @@
               <i class="fa-solid fa-gift text-lg"></i>
             </div>
             <div class="mt-2">
-              <div class="text-base font-extrabold text-slate-900 leading-tight">1,200 T</div>
+              <div class="text-base font-extrabold text-slate-900 leading-tight"><?= e(t_format($totalEarnedT)) ?></div>
               <div class="text-[10px] font-semibold text-slate-600 flex items-center gap-0.5 mt-0.5 whitespace-nowrap">
                 <span>Total Earned</span>
                 <i class="fa-solid fa-chevron-right text-[8px] opacity-70"></i>
@@ -269,6 +303,47 @@
           </div>
         </div>
       </div>
+
+      <?php if ($recentReferrals !== []): ?>
+        <!-- Recent Referrals Card -->
+        <div class="bg-white rounded-3xl p-4 card-shadow">
+          <div class="flex items-center gap-2.5 mb-3">
+            <div class="w-8 h-8 rounded-xl bg-[#e8f8f0] text-emerald-600 flex items-center justify-center shrink-0">
+              <i class="fa-solid fa-user-plus text-sm"></i>
+            </div>
+            <h3 class="font-extrabold text-sm text-slate-900">Recent Referrals</h3>
+          </div>
+
+          <div class="divide-y divide-slate-100">
+            <?php foreach ($recentReferrals as $index => $ref): ?>
+              <?php
+                $name = trim((string) ($ref['first_name'] ?? ''));
+                if ($name === '') {
+                    $name = !empty($ref['username']) ? '@' . $ref['username'] : mask_telegram_id($ref['telegram_id'] ?? null);
+                }
+                $status = (string) $ref['status'];
+                $badge  = match ($status) {
+                    'credited' => 'bg-emerald-50 text-emerald-700',
+                    'reversed' => 'bg-rose-50 text-rose-700',
+                    default    => 'bg-amber-50 text-amber-700',
+                };
+                $rowClass = $index === 0 ? 'py-2.5 first:pt-0' : 'py-2.5';
+                $rowClass .= $index === count($recentReferrals) - 1 ? ' last:pb-0' : '';
+              ?>
+              <div class="<?= e($rowClass) ?> flex items-center justify-between">
+                <div class="min-w-0">
+                  <div class="text-xs font-extrabold text-slate-900 truncate"><?= e($name) ?></div>
+                  <div class="text-[10px] font-medium text-slate-400 mt-0.5"><?= e(activity_time($ref['credited_at'] ?: $ref['created_at'])) ?></div>
+                </div>
+                <div class="text-right shrink-0 ml-2">
+                  <div class="text-xs font-extrabold text-emerald-600">+<?= e(t_format((float) $ref['reward_t'])) ?></div>
+                  <span class="inline-block mt-0.5 text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full <?= e($badge) ?>"><?= e($status) ?></span>
+                </div>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        </div>
+      <?php endif; ?>
 
     </div>
 
@@ -331,6 +406,32 @@
             icon.className = 'fa-regular fa-copy text-base';
           }, 1500);
         });
+      }
+
+      function shareInviteLink() {
+        const link = document.getElementById('inviteLink').innerText;
+        const text = 'Join Refer & Earn and get <?= e(t_format($signupBonusT)) ?> signup bonus!';
+
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openTelegramLink) {
+          window.Telegram.WebApp.openTelegramLink(
+            'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text)
+          );
+          return;
+        }
+
+        if (navigator.share) {
+          navigator.share({ title: 'Refer & Earn', text: text, url: link }).catch(() => {});
+          return;
+        }
+
+        copyInviteLink();
+      }
+
+      if (window.Telegram && window.Telegram.WebApp) {
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        tg.setHeaderColor('#5925dc');
       }
     </script>
 </body>

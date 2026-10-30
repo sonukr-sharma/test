@@ -81,6 +81,9 @@ CREATE TABLE `users` (
   `total_withdrawn_t`  DECIMAL(14,2)   NOT NULL DEFAULT 0.00,
   `referral_count`     INT UNSIGNED    NOT NULL DEFAULT 0 COMMENT 'Denormalised count of credited referrals',
   `status`             ENUM('active','inactive','blocked') NOT NULL DEFAULT 'active',
+  `bot_started_at`     DATETIME        DEFAULT NULL COMMENT 'Set when the bot first receives a message from this user',
+  `channels_verified_at` DATETIME      DEFAULT NULL COMMENT 'Last time every required channel membership was confirmed',
+  `pending_referral_code` VARCHAR(32)  DEFAULT NULL COMMENT 'Referral code captured by /start, applied inside the web app',
   `joined_at`          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `last_active_at`     DATETIME        DEFAULT NULL,
   `created_at`         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -300,10 +303,50 @@ CREATE TABLE `audit_logs` (
     FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- =====================================================================
+--  9. REQUIRED CHANNELS  (channel gate — adm/channels.php, index.php)
+-- =====================================================================
+
+DROP TABLE IF EXISTS `required_channels`;
+CREATE TABLE `required_channels` (
+  `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `chat_id`       VARCHAR(64)     NOT NULL COMMENT 'e.g. @mychannel or -1001234567890',
+  `title`         VARCHAR(150)    NOT NULL,
+  `invite_url`    VARCHAR(500)    DEFAULT NULL COMMENT 't.me link opened by the Join button',
+  `is_active`     TINYINT(1)      NOT NULL DEFAULT 1,
+  `sort_order`    INT             NOT NULL DEFAULT 0,
+  `created_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_required_channels_chat` (`chat_id`),
+  KEY `idx_required_channels_active` (`is_active`, `sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================================
+-- 10. TELEGRAM UPDATES  (webhook/index.php — raw update log)
+-- =====================================================================
+
+DROP TABLE IF EXISTS `telegram_updates`;
+CREATE TABLE `telegram_updates` (
+  `id`             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `update_id`      BIGINT          DEFAULT NULL COMMENT 'Telegram update_id',
+  `telegram_id`    BIGINT          DEFAULT NULL COMMENT 'Sender chat id, when present',
+  `update_type`    VARCHAR(40)     DEFAULT NULL COMMENT 'message / callback_query / web_app_data ...',
+  `command`        VARCHAR(64)     DEFAULT NULL COMMENT 'e.g. /start',
+  `payload`        JSON            DEFAULT NULL COMMENT 'Raw update body',
+  `handled`        TINYINT(1)      NOT NULL DEFAULT 0,
+  `error_message`  VARCHAR(500)    DEFAULT NULL,
+  `created_at`     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_telegram_updates_update_id` (`update_id`),
+  KEY `idx_telegram_updates_user` (`telegram_id`, `created_at`),
+  KEY `idx_telegram_updates_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =====================================================================
---  9. VIEWS  (dashboard KPI cards + leaderboard page)
+-- 11. VIEWS  (dashboard KPI cards + leaderboard page)
 -- =====================================================================
 
 -- Leaderboard: rank users by credited referrals, then earnings.
@@ -341,7 +384,7 @@ SELECT
 FROM `broadcasts`;
 
 -- =====================================================================
--- 10. SEED DATA
+-- 12. SEED DATA
 -- =====================================================================
 
 -- Default admin — password is "admin123" (bcrypt). CHANGE IT AFTER IMPORT.
@@ -360,11 +403,18 @@ INSERT INTO `settings` (`key`, `value`, `data_type`, `group_name`, `label`) VALU
   ('coin_to_inr_rate',         '0.10',                         'decimal', 'withdrawal','Conversion rate: 1 T in ₹'),
   ('bot_token',                '',                             'secret',  'bot',       'Telegram Bot Token'),
   ('bot_web_app_url',          '',                             'url',     'bot',       'Bot Web App URL'),
+  ('bot_username',             '',                             'string',  'bot',       'Telegram Bot Username (auto-filled)'),
+  ('webhook_secret',           '',                             'secret',  'bot',       'Telegram Webhook Secret Token'),
   ('signup_bonus_t',           '50',                           'decimal', 'bonus',     'Signup Bonus (T)'),
   ('enable_signup_bonus',      '1',                            'boolean', 'bonus',     'Enable Signup Bonus'),
   ('allow_registration',       '1',                            'boolean', 'platform',  'Allow New User Registration'),
   ('withdrawals_enabled',      '1',                            'boolean', 'platform',  'Withdrawals Enabled'),
-  ('withdrawal_processing_hours', '24',                        'integer', 'withdrawal','Processing time shown to users (hours)');
+  ('withdrawal_processing_hours', '24',                        'integer', 'withdrawal','Processing time shown to users (hours)'),
+
+  -- Channel gate: force users to join channels before the mini app unlocks.
+  ('require_channel_join',     '0',                            'boolean', 'gate',      'Require Channel Membership'),
+  ('require_bot_start',        '1',                            'boolean', 'gate',      'Require /start Before Using the App'),
+  ('channel_gate_message',     'Join our channels to unlock Refer & Earn and start earning rewards.', 'string', 'gate', 'Channel Gate Message');
 
 -- =====================================================================
 --  End of schema

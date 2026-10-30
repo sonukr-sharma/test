@@ -1,9 +1,136 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/config.php';
+
+$user = require_onboarded_user();
+
+$withdrawalsEnabled = (bool) setting('withdrawals_enabled', true);
+$minWithdrawalT     = (float) setting('min_withdrawal_t', 2000);
+$maxWithdrawalT     = (float) setting('max_withdrawal_t', 50000);
+$minReferrals       = (int) setting('min_referrals_withdrawal', 5);
+$processingHours    = (int) setting('withdrawal_processing_hours', 24);
+$balanceT           = (float) $user['balance_t'];
+$referralCount      = (int) $user['referral_count'];
+
+$formError = null;
+$formUpi   = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $formUpi = trim((string) ($_POST['upi_id'] ?? ''));
+    $amount  = (float) ($_POST['amount'] ?? 0);
+
+    if (!csrf_verify($_POST['csrf_token'] ?? null)) {
+        $formError = 'Your session expired. Please try again.';
+    } elseif (!$withdrawalsEnabled) {
+        $formError = 'Withdrawals are temporarily disabled.';
+    } elseif ($referralCount < $minReferrals) {
+        $formError = sprintf('You need at least %d referrals to withdraw.', $minReferrals);
+    } elseif (preg_match('/^[\w.\-]{2,}@[a-zA-Z]{2,}$/', $formUpi) !== 1) {
+        $formError = 'Please enter a valid UPI ID (e.g. yourname@upi).';
+    } elseif ($amount < $minWithdrawalT) {
+        $formError = 'Minimum withdrawal is ' . t_format($minWithdrawalT) . '.';
+    } elseif ($amount > $maxWithdrawalT) {
+        $formError = 'Maximum withdrawal is ' . t_format($maxWithdrawalT) . '.';
+    } elseif ($amount > $balanceT) {
+        $formError = 'Insufficient balance. You have ' . t_format($balanceT) . '.';
+    } else {
+        $pdo = db();
+
+        try {
+            $pdo->beginTransaction();
+
+            $stmt = $pdo->prepare('SELECT `balance_t` FROM `users` WHERE `id` = :id FOR UPDATE');
+            $stmt->execute([':id' => $user['id']]);
+            $lockedBalance = (float) $stmt->fetchColumn();
+
+            if ($amount > $lockedBalance) {
+                throw new RuntimeException('Insufficient balance.');
+            }
+
+            $stmt = $pdo->prepare(
+                'INSERT INTO `withdrawals`
+                    (`user_id`, `amount_t`, `amount_inr`, `payout_method`, `upi_id`, `status`, `requested_at`)
+                 VALUES (:uid, :amt, :inr, :method, :upi, :status, NOW())'
+            );
+            $stmt->execute([
+                ':uid'    => $user['id'],
+                ':amt'    => $amount,
+                ':inr'    => t_to_inr($amount),
+                ':method' => 'upi',
+                ':upi'    => $formUpi,
+                ':status' => 'pending',
+            ]);
+
+            $withdrawalId = (int) $pdo->lastInsertId();
+
+            $stmt = $pdo->prepare(
+                'INSERT INTO `withdrawal_status_history`
+                    (`withdrawal_id`, `from_status`, `to_status`, `note`, `admin_id`)
+                 VALUES (:wid, NULL, :to, :note, NULL)'
+            );
+            $stmt->execute([
+                ':wid'  => $withdrawalId,
+                ':to'   => 'pending',
+                ':note' => 'Requested by user via mini app.',
+            ]);
+
+            credit_wallet(
+                (int) $user['id'],
+                'withdrawal_debit',
+                'debit',
+                $amount,
+                'withdrawal',
+                $withdrawalId,
+                'Withdrawal request to ' . $formUpi
+            );
+
+            $pdo->commit();
+
+            flash_set('success', 'Withdrawal request of ' . t_format($amount) . ' submitted. It will be processed within ' . $processingHours . ' hours.');
+            redirect('withdraw.php');
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+
+            error_log('withdraw.php failed: ' . $e->getMessage());
+            $formError = APP_DEBUG ? $e->getMessage() : 'Could not submit your request. Please try again.';
+        }
+    }
+}
+
+$flash = flash_get();
+
+// Refresh the balance after a successful submission.
+if ($flash !== null) {
+    $stmt = db()->prepare('SELECT `balance_t` FROM `users` WHERE `id` = :id LIMIT 1');
+    $stmt->execute([':id' => $user['id']]);
+    $balanceT = (float) $stmt->fetchColumn();
+}
+
+$recentWithdrawals = [];
+try {
+    $stmt = db()->prepare(
+        'SELECT `id`, `amount_t`, `amount_inr`, `upi_id`, `status`, `requested_at`
+           FROM `withdrawals`
+          WHERE `user_id` = :uid
+          ORDER BY `requested_at` DESC, `id` DESC
+          LIMIT 5'
+    );
+    $stmt->execute([':uid' => $user['id']]);
+    $recentWithdrawals = $stmt->fetchAll();
+} catch (Throwable $e) {
+    error_log('withdraw.php history failed: ' . $e->getMessage());
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Withdraw - Refer & Earn</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Font Awesome 6 CDN -->
@@ -68,7 +195,7 @@
         <div class="flex items-center gap-2.5">
           <div class="flex items-center gap-2 bg-white/15 backdrop-blur-sm border border-white/10 rounded-full px-3 py-1.5">
             <i class="fa-brands fa-telegram text-white text-sm"></i>
-            <span class="text-white text-xs font-bold tracking-wide">ID: *****6789</span>
+            <span class="text-white text-xs font-bold tracking-wide">ID: <?= e(mask_telegram_id($user['telegram_id'])) ?></span>
           </div>
         </div>
       </div>
@@ -83,8 +210,8 @@
         <div class="flex items-center gap-3 mt-2">
           <div class="w-11 h-11 rounded-full t-coin flex items-center justify-center shrink-0"></div>
           <div>
-            <div class="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">1,250 T</div>
-            <div class="text-xs font-semibold text-slate-500 mt-1">≈ ₹125.00</div>
+            <div class="text-3xl font-extrabold text-slate-900 tracking-tight leading-none"><?= e(t_format($balanceT)) ?></div>
+            <div class="text-xs font-semibold text-slate-500 mt-1">≈ <?= e(inr_format(t_to_inr($balanceT))) ?></div>
           </div>
         </div>
 
@@ -92,7 +219,7 @@
         <div class="mt-4 bg-[#f5f3ff] rounded-xl px-3 py-2.5 flex items-center justify-between text-xs">
           <div class="flex items-center gap-1.5">
             <i class="fa-solid fa-crown text-amber-400 text-sm"></i>
-            <span class="text-slate-600 font-medium">Minimum cashout: <strong class="text-[#5925dc] font-bold">2,000 T (₹200)</strong></span>
+            <span class="text-slate-600 font-medium">Minimum cashout: <strong class="text-[#5925dc] font-bold"><?= e(t_format($minWithdrawalT)) ?> (<?= e(inr_format(t_to_inr($minWithdrawalT))) ?>)</strong></span>
           </div>
         </div>
       </div>
@@ -101,38 +228,106 @@
       <div class="bg-white rounded-3xl p-4 card-shadow">
         <h3 class="font-extrabold text-sm text-slate-900 mb-3">Withdraw Amount</h3>
 
-              <!-- UPI ID Input -->
-              <div class="mb-3">
-                <label class="text-xs font-bold text-slate-600 mb-1.5 block">UPI ID</label>
-                <div class="bg-[#f4f4f8] rounded-2xl px-3.5 py-3 flex items-center justify-between border border-slate-200/80">
-                  <input type="text" id="upiId" placeholder="yourname@upi" class="bg-transparent text-sm font-semibold text-slate-800 w-full outline-none" />
-                  <i class="fa-solid fa-building-columns text-[#5925dc] text-sm ml-2"></i>
-                </div>
-              </div>
+        <?php if ($flash !== null): ?>
+          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold <?= $flash['type'] === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200' ?>">
+            <?= e($flash['message']) ?>
+          </div>
+        <?php endif; ?>
 
-              <!-- Amount Input -->
-              <div class="mb-3">
-                <label class="text-xs font-bold text-slate-600 mb-1.5 block">Amount</label>
-                <div class="bg-[#f4f4f8] rounded-2xl px-3.5 py-3 flex items-center justify-between border border-slate-200/80">
-                  <input type="number" id="withdrawAmount" placeholder="Enter amount (T)" class="bg-transparent text-sm font-semibold text-slate-800 w-full outline-none" />
-                  <span class="text-xs font-bold text-[#5925dc] whitespace-nowrap ml-2">T</span>
-                </div>
-              </div>
+        <?php if ($formError !== null): ?>
+          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+            <?= e($formError) ?>
+          </div>
+        <?php endif; ?>
 
-              <!-- Quick Amount Chips -->
-              <div class="grid grid-cols-4 gap-2 mt-3">
-                <button onclick="setAmount(2000)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition">2,000</button>
-                <button onclick="setAmount(5000)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition">5,000</button>
-                <button onclick="setAmount(10000)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition">10,000</button>
-                <button onclick="setAmount(20000)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition">20,000</button>
-              </div>
+        <?php if (!$withdrawalsEnabled): ?>
+          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+            Withdrawals are temporarily disabled. Please check back later.
+          </div>
+        <?php elseif ($referralCount < $minReferrals): ?>
+          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+            You need at least <?= e((string) $minReferrals) ?> referrals to withdraw. You currently have <?= e((string) $referralCount) ?>.
+          </div>
+        <?php endif; ?>
 
-              <!-- Withdraw Button -->
-              <button onclick="withdraw()" class="btn-purple w-full text-white font-bold text-sm py-3.5 rounded-2xl flex items-center justify-center gap-2.5 mt-4 active:scale-[0.98] transition">
-                <i class="fa-solid fa-wallet text-base"></i>
-                <span>Withdraw Now</span>
-              </button>
+        <form method="post" action="withdraw.php" id="withdrawForm" class="contents">
+          <?= csrf_field() ?>
+
+          <!-- UPI ID Input -->
+          <div class="mb-3">
+            <label class="text-xs font-bold text-slate-600 mb-1.5 block" for="upiId">UPI ID</label>
+            <div class="bg-[#f4f4f8] rounded-2xl px-3.5 py-3 flex items-center justify-between border border-slate-200/80">
+              <input type="text" id="upiId" name="upi_id" value="<?= e($formUpi) ?>" placeholder="yourname@upi"
+                     class="bg-transparent text-sm font-semibold text-slate-800 w-full outline-none" />
+              <i class="fa-solid fa-building-columns text-[#5925dc] text-sm ml-2"></i>
             </div>
+          </div>
+
+          <!-- Amount Input -->
+          <div class="mb-3">
+            <label class="text-xs font-bold text-slate-600 mb-1.5 block" for="withdrawAmount">Amount</label>
+            <div class="bg-[#f4f4f8] rounded-2xl px-3.5 py-3 flex items-center justify-between border border-slate-200/80">
+              <input type="number" id="withdrawAmount" name="amount" min="<?= e((string) (int) $minWithdrawalT) ?>" max="<?= e((string) (int) $maxWithdrawalT) ?>" step="1"
+                     placeholder="Enter amount (T)" class="bg-transparent text-sm font-semibold text-slate-800 w-full outline-none" />
+              <span class="text-xs font-bold text-[#5925dc] whitespace-nowrap ml-2">T</span>
+            </div>
+            <div class="text-[10px] font-medium text-slate-400 mt-1.5">
+              Min <?= e(t_format($minWithdrawalT)) ?> &middot; Max <?= e(t_format($maxWithdrawalT)) ?> &middot; Balance <?= e(t_format($balanceT)) ?>
+            </div>
+          </div>
+
+          <!-- Quick Amount Chips -->
+          <div class="grid grid-cols-4 gap-2 mt-3">
+            <button type="button" onclick="setAmount(<?= e((string) (int) $minWithdrawalT) ?>)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition"><?= e(t_format($minWithdrawalT, false)) ?></button>
+            <button type="button" onclick="setAmount(5000)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition">5,000</button>
+            <button type="button" onclick="setAmount(10000)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition">10,000</button>
+            <button type="button" onclick="setAmount(20000)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition">20,000</button>
+          </div>
+
+          <!-- Withdraw Button -->
+          <button type="submit" class="btn-purple w-full text-white font-bold text-sm py-3.5 rounded-2xl flex items-center justify-center gap-2.5 mt-4 active:scale-[0.98] transition">
+            <i class="fa-solid fa-wallet text-base"></i>
+            <span>Withdraw Now</span>
+          </button>
+        </form>
+      </div>
+
+      <?php if ($recentWithdrawals !== []): ?>
+        <!-- Recent Requests Card -->
+        <div class="bg-white rounded-3xl p-4 card-shadow">
+          <div class="flex items-center gap-2 mb-3">
+            <i class="fa-regular fa-clock text-slate-500 text-sm"></i>
+            <h3 class="font-extrabold text-sm text-slate-900">Recent Requests</h3>
+          </div>
+
+          <div class="divide-y divide-slate-100">
+            <?php foreach ($recentWithdrawals as $index => $row): ?>
+              <?php
+                $status = (string) $row['status'];
+                $badge  = match ($status) {
+                    'completed'  => 'bg-emerald-50 text-emerald-700',
+                    'processing' => 'bg-blue-50 text-blue-700',
+                    'rejected'   => 'bg-rose-50 text-rose-700',
+                    'cancelled'  => 'bg-slate-100 text-slate-600',
+                    default      => 'bg-amber-50 text-amber-700',
+                };
+                $rowClass = $index === 0 ? 'py-2.5 first:pt-0' : 'py-2.5';
+                $rowClass .= $index === count($recentWithdrawals) - 1 ? ' last:pb-0' : '';
+              ?>
+              <div class="<?= e($rowClass) ?> flex items-center justify-between">
+                <div class="min-w-0">
+                  <div class="text-xs font-extrabold text-slate-900"><?= e(t_format((float) $row['amount_t'])) ?></div>
+                  <div class="text-[11px] font-medium text-slate-500 mt-0.5 truncate"><?= e((string) $row['upi_id']) ?></div>
+                  <div class="text-[10px] font-medium text-slate-400 mt-0.5"><?= e(activity_time($row['requested_at'] ?? null)) ?></div>
+                </div>
+                <span class="text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-full <?= e($badge) ?> shrink-0 ml-2">
+                  <?= e($status) ?>
+                </span>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        </div>
+      <?php endif; ?>
 
       <!-- Withdrawal Info Card -->
       <div class="bg-[#e8f8f0] rounded-2xl p-3.5 border border-emerald-100">
@@ -143,7 +338,7 @@
           <div>
             <div class="text-xs font-extrabold text-slate-900">Withdrawal Info</div>
             <div class="text-[11px] font-medium text-slate-600 mt-0.5 leading-snug">
-              Withdrawals are processed within 24 hours. The amount will be sent to your linked Telegram account.
+              Withdrawals are processed within <?= e((string) $processingHours) ?> hours. The amount will be sent to the UPI ID you provide.
             </div>
           </div>
         </div>
@@ -183,6 +378,10 @@
 
   <!-- Withdraw Script -->
   <script>
+        const MIN_WITHDRAW = <?= (int) $minWithdrawalT ?>;
+        const MAX_WITHDRAW = <?= (int) $maxWithdrawalT ?>;
+        const BALANCE_T    = <?= (float) $balanceT ?>;
+
         let toastTimeout;
 
         function showToast(message, isError) {
@@ -206,23 +405,47 @@
           document.getElementById('withdrawAmount').value = value;
         }
 
-        function withdraw() {
+        document.getElementById('withdrawForm').addEventListener('submit', function (event) {
           const upiId = document.getElementById('upiId').value.trim();
           const amount = parseInt(document.getElementById('withdrawAmount').value, 10);
 
           if (!upiId) {
+            event.preventDefault();
             showToast('Please enter your UPI ID', true);
             return;
           }
           if (!/^[\w.\-]{2,}@[a-zA-Z]{2,}$/.test(upiId)) {
+            event.preventDefault();
             showToast('Please enter a valid UPI ID (e.g. yourname@upi)', true);
             return;
           }
-          if (!amount || amount < 2000) {
-            showToast('Minimum withdrawal is 2,000 T', true);
+          if (!amount || amount < MIN_WITHDRAW) {
+            event.preventDefault();
+            showToast('Minimum withdrawal is ' + MIN_WITHDRAW.toLocaleString() + ' T', true);
             return;
           }
-          showToast('Withdrawal request of ' + amount + ' T to ' + upiId + ' submitted successfully!');
+          if (amount > MAX_WITHDRAW) {
+            event.preventDefault();
+            showToast('Maximum withdrawal is ' + MAX_WITHDRAW.toLocaleString() + ' T', true);
+            return;
+          }
+          if (amount > BALANCE_T) {
+            event.preventDefault();
+            showToast('Insufficient balance', true);
+            return;
+          }
+
+          const button = this.querySelector('button[type="submit"]');
+          button.disabled = true;
+          button.classList.add('opacity-70');
+          button.querySelector('span').textContent = 'Submitting...';
+        });
+
+        if (window.Telegram && window.Telegram.WebApp) {
+          const tg = window.Telegram.WebApp;
+          tg.ready();
+          tg.expand();
+          tg.setHeaderColor('#5925dc');
         }
     </script>
 </body>

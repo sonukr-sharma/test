@@ -1,9 +1,98 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/config.php';
+
+$user = require_onboarded_user();
+
+$leaderboard = [];
+$myRank      = null;
+
+try {
+    $stmt = db()->query(
+        'SELECT `user_id`, `username`, `avatar_url`, `referral_count`, `total_earned_t`, `rank_position`
+           FROM `v_leaderboard`
+          ORDER BY `rank_position` ASC
+          LIMIT 50'
+    );
+    $leaderboard = $stmt->fetchAll();
+
+    foreach ($leaderboard as $row) {
+        if ((int) $row['user_id'] === (int) $user['id']) {
+            $myRank = $row;
+            break;
+        }
+    }
+
+    if ($myRank === null) {
+        $stmt = db()->prepare(
+            'SELECT `user_id`, `username`, `avatar_url`, `referral_count`, `total_earned_t`, `rank_position`
+               FROM `v_leaderboard`
+              WHERE `user_id` = :uid
+              LIMIT 1'
+        );
+        $stmt->execute([':uid' => $user['id']]);
+        $myRank = $stmt->fetch() ?: null;
+    }
+} catch (Throwable $e) {
+    error_log('leaderboard.php failed: ' . $e->getMessage());
+}
+
+$podium = array_slice($leaderboard, 0, 3);
+$rest   = array_slice($leaderboard, 3, 7);
+
+$first  = $podium[0] ?? null;
+$second = $podium[1] ?? null;
+$third  = $podium[2] ?? null;
+
+/**
+ * Display name for a leaderboard row.
+ *
+ * @param array<string, mixed>|null $row
+ */
+function lb_name(?array $row): string
+{
+    if ($row === null) {
+        return '—';
+    }
+
+    $name = trim((string) ($row['username'] ?? ''));
+
+    return $name !== '' ? $name : 'user_' . (int) $row['user_id'];
+}
+
+/**
+ * Avatar URL with a generated placeholder fallback.
+ *
+ * @param array<string, mixed>|null $row
+ */
+function lb_avatar(?array $row, string $initials = 'U'): string
+{
+    $url = trim((string) ($row['avatar_url'] ?? ''));
+
+    return $url !== '' ? $url : 'https://placehold.co/100x100/e2e8f0/334155?text=' . rawurlencode($initials);
+}
+
+/**
+ * Two-letter initials for the placeholder avatar.
+ *
+ * @param array<string, mixed>|null $row
+ */
+function lb_initials(?array $row): string
+{
+    $name = lb_name($row);
+    $name = ltrim($name, '@');
+
+    return strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $name) ?: 'U', 0, 2));
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Refer & Earn - Leaderboard</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Font Awesome 6 CDN -->
@@ -72,7 +161,7 @@
                 <div class="flex items-center gap-2.5">
                   <div class="flex items-center gap-2 bg-white/15 backdrop-blur-sm border border-white/15 rounded-full px-3 py-1.5">
                     <i class="fa-brands fa-telegram text-white text-sm"></i>
-                    <span class="text-white text-xs font-bold tracking-wide">ID: *****6789</span>
+                    <span class="text-white text-xs font-bold tracking-wide">ID: <?= e(mask_telegram_id($user['telegram_id'])) ?></span>
                   </div>
                 </div>
       </div>
@@ -112,21 +201,21 @@
 
           <!-- Avatar -->
           <div class="w-14 h-14 rounded-full p-0.5 bg-gradient-to-b from-slate-300 to-slate-400 shadow-sm">
-            <img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80"
-                 onerror="this.src='https://placehold.co/100x100/e2e8f0/475569?text=RT'"
-                 alt="rohit_tech"
+            <img src="<?= e(lb_avatar($second, lb_initials($second))) ?>"
+                 onerror="this.src='https://placehold.co/100x100/e2e8f0/475569?text=<?= e(lb_initials($second)) ?>'"
+                 alt="<?= e(lb_name($second)) ?>"
                  class="w-full h-full rounded-full object-cover" />
           </div>
 
-          <div class="mt-2 text-xs font-extrabold text-slate-900 truncate max-w-full">rohit_tech</div>
-          <div class="text-[10px] font-medium text-slate-500 mt-0.5">342 Referrals</div>
+          <div class="mt-2 text-xs font-extrabold text-slate-900 truncate max-w-full"><?= e(lb_name($second)) ?></div>
+          <div class="text-[10px] font-medium text-slate-500 mt-0.5"><?= e(number_format((int) ($second['referral_count'] ?? 0))) ?> Referrals</div>
 
           <!-- Reward Pill -->
           <div class="mt-2.5 w-full bg-[#e1ecff] rounded-xl py-1.5 px-2 flex items-center justify-center gap-1.5">
             <div class="w-4 h-4 rounded-full t-coin flex items-center justify-center shrink-0">
               <span class="text-amber-900 font-extrabold text-[9px]">T</span>
             </div>
-            <span class="text-[11px] font-extrabold text-[#432ad8] whitespace-nowrap">51,300 T</span>
+            <span class="text-[11px] font-extrabold text-[#432ad8] whitespace-nowrap"><?= e(t_format((float) ($second['total_earned_t'] ?? 0))) ?></span>
           </div>
         </div>
 
@@ -152,21 +241,21 @@
 
           <!-- Avatar -->
           <div class="w-16 h-16 rounded-full p-0.5 bg-gradient-to-b from-amber-300 to-amber-500 shadow">
-            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
-                 onerror="this.src='https://placehold.co/100x100/fef3c7/92400e?text=KR'"
-                 alt="king_rajat"
+            <img src="<?= e(lb_avatar($first, lb_initials($first))) ?>"
+                 onerror="this.src='https://placehold.co/100x100/fef3c7/92400e?text=<?= e(lb_initials($first)) ?>'"
+                 alt="<?= e(lb_name($first)) ?>"
                  class="w-full h-full rounded-full object-cover" />
           </div>
 
-          <div class="mt-2 text-xs font-extrabold text-slate-900 truncate max-w-full">king_rajat</div>
-          <div class="text-[10px] font-medium text-slate-500 mt-0.5">512 Referrals</div>
+          <div class="mt-2 text-xs font-extrabold text-slate-900 truncate max-w-full"><?= e(lb_name($first)) ?></div>
+          <div class="text-[10px] font-medium text-slate-500 mt-0.5"><?= e(number_format((int) ($first['referral_count'] ?? 0))) ?> Referrals</div>
 
           <!-- Reward Pill -->
           <div class="mt-2.5 w-full bg-[#ffedb8] rounded-xl py-1.5 px-2 flex items-center justify-center gap-1.5">
             <div class="w-4 h-4 rounded-full t-coin flex items-center justify-center shrink-0">
               <span class="text-amber-900 font-extrabold text-[9px]">T</span>
             </div>
-            <span class="text-xs font-extrabold text-[#432ad8] whitespace-nowrap">76,800 T</span>
+            <span class="text-xs font-extrabold text-[#432ad8] whitespace-nowrap"><?= e(t_format((float) ($first['total_earned_t'] ?? 0))) ?></span>
           </div>
         </div>
 
@@ -193,21 +282,21 @@
 
           <!-- Avatar -->
           <div class="w-14 h-14 rounded-full p-0.5 bg-gradient-to-b from-amber-600/60 to-orange-700/60 shadow-sm">
-            <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80"
-                 onerror="this.src='https://placehold.co/100x100/ffe4e6/9f1239?text=PE'"
-                 alt="priya_earn"
+            <img src="<?= e(lb_avatar($third, lb_initials($third))) ?>"
+                 onerror="this.src='https://placehold.co/100x100/ffe4e6/9f1239?text=<?= e(lb_initials($third)) ?>'"
+                 alt="<?= e(lb_name($third)) ?>"
                  class="w-full h-full rounded-full object-cover" />
           </div>
 
-          <div class="mt-2 text-xs font-extrabold text-slate-900 truncate max-w-full">priya_earn</div>
-          <div class="text-[10px] font-medium text-slate-500 mt-0.5">298 Referrals</div>
+          <div class="mt-2 text-xs font-extrabold text-slate-900 truncate max-w-full"><?= e(lb_name($third)) ?></div>
+          <div class="text-[10px] font-medium text-slate-500 mt-0.5"><?= e(number_format((int) ($third['referral_count'] ?? 0))) ?> Referrals</div>
 
           <!-- Reward Pill -->
           <div class="mt-2.5 w-full bg-[#ffe2e8] rounded-xl py-1.5 px-2 flex items-center justify-center gap-1.5">
             <div class="w-4 h-4 rounded-full t-coin flex items-center justify-center shrink-0">
               <span class="text-amber-900 font-extrabold text-[9px]">T</span>
             </div>
-            <span class="text-[11px] font-extrabold text-[#432ad8] whitespace-nowrap">44,700 T</span>
+            <span class="text-[11px] font-extrabold text-[#432ad8] whitespace-nowrap"><?= e(t_format((float) ($third['total_earned_t'] ?? 0))) ?></span>
           </div>
         </div>
 
@@ -225,148 +314,52 @@
 
         <!-- Ranks 4 to 10 List -->
         <div id="leaderboardRows" class="divide-y divide-slate-100 mt-1">
-          <!-- Row 4 -->
-          <div class="py-2.5 px-2.5 grid grid-cols-12 items-center">
-            <div class="col-span-1 text-xs font-bold text-slate-600">4</div>
-            <div class="col-span-5 flex items-center gap-2.5 min-w-0">
-              <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80"
-                   onerror="this.src='https://placehold.co/80x80/e2e8f0/334155?text=AK'"
-                   alt="amit_kumar" class="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200" />
-              <span class="text-xs font-bold text-slate-900 truncate">amit_kumar</span>
-            </div>
-            <div class="col-span-3 text-center text-xs font-semibold text-slate-600">210</div>
-            <div class="col-span-3 flex items-center justify-end gap-1.5">
-              <div class="w-4 h-4 rounded-full t-coin flex items-center justify-center shrink-0">
-                <span class="text-amber-900 font-extrabold text-[9px]">T</span>
+          <?php if ($rest === []): ?>
+            <div class="py-8 text-center">
+              <div class="w-12 h-12 mx-auto rounded-full bg-[#f4f4f8] text-slate-400 flex items-center justify-center">
+                <i class="fa-solid fa-trophy text-lg"></i>
               </div>
-              <span class="text-xs font-extrabold text-[#5925dc] whitespace-nowrap">31,500 T</span>
+              <p class="mt-2.5 text-xs font-semibold text-slate-500">No rankings yet</p>
+              <p class="mt-1 text-[11px] text-slate-400">Invite friends to climb the leaderboard.</p>
             </div>
-          </div>
-
-          <!-- Row 5 -->
-          <div class="py-2.5 px-2.5 grid grid-cols-12 items-center">
-            <div class="col-span-1 text-xs font-bold text-slate-600">5</div>
-            <div class="col-span-5 flex items-center gap-2.5 min-w-0">
-              <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80"
-                   onerror="this.src='https://placehold.co/80x80/e2e8f0/334155?text=N'"
-                   alt="neha_123" class="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200" />
-              <span class="text-xs font-bold text-slate-900 truncate">neha_123</span>
-            </div>
-            <div class="col-span-3 text-center text-xs font-semibold text-slate-600">178</div>
-            <div class="col-span-3 flex items-center justify-end gap-1.5">
-              <div class="w-4 h-4 rounded-full t-coin flex items-center justify-center shrink-0">
-                <span class="text-amber-900 font-extrabold text-[9px]">T</span>
+          <?php else: ?>
+            <?php foreach ($rest as $row): ?>
+              <?php $initials = lb_initials($row); ?>
+              <div class="py-2.5 px-2.5 grid grid-cols-12 items-center">
+                <div class="col-span-1 text-xs font-bold text-slate-600"><?= e((string) (int) $row['rank_position']) ?></div>
+                <div class="col-span-5 flex items-center gap-2.5 min-w-0">
+                  <img src="<?= e(lb_avatar($row, $initials)) ?>"
+                       onerror="this.src='https://placehold.co/80x80/e2e8f0/334155?text=<?= e($initials) ?>'"
+                       alt="<?= e(lb_name($row)) ?>" class="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200" />
+                  <span class="text-xs font-bold text-slate-900 truncate"><?= e(lb_name($row)) ?></span>
+                </div>
+                <div class="col-span-3 text-center text-xs font-semibold text-slate-600"><?= e(number_format((int) $row['referral_count'])) ?></div>
+                <div class="col-span-3 flex items-center justify-end gap-1.5">
+                  <div class="w-4 h-4 rounded-full t-coin flex items-center justify-center shrink-0">
+                    <span class="text-amber-900 font-extrabold text-[9px]">T</span>
+                  </div>
+                  <span class="text-xs font-extrabold text-[#5925dc] whitespace-nowrap"><?= e(t_format((float) $row['total_earned_t'])) ?></span>
+                </div>
               </div>
-              <span class="text-xs font-extrabold text-[#5925dc] whitespace-nowrap">26,700 T</span>
-            </div>
-          </div>
-
-          <!-- Row 6 -->
-          <div class="py-2.5 px-2.5 grid grid-cols-12 items-center">
-            <div class="col-span-1 text-xs font-bold text-slate-600">6</div>
-            <div class="col-span-5 flex items-center gap-2.5 min-w-0">
-              <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80"
-                   onerror="this.src='https://placehold.co/80x80/e2e8f0/334155?text=SD'"
-                   alt="sahil_dev" class="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200" />
-              <span class="text-xs font-bold text-slate-900 truncate">sahil_dev</span>
-            </div>
-            <div class="col-span-3 text-center text-xs font-semibold text-slate-600">156</div>
-            <div class="col-span-3 flex items-center justify-end gap-1.5">
-              <div class="w-4 h-4 rounded-full t-coin flex items-center justify-center shrink-0">
-                <span class="text-amber-900 font-extrabold text-[9px]">T</span>
-              </div>
-              <span class="text-xs font-extrabold text-[#5925dc] whitespace-nowrap">23,400 T</span>
-            </div>
-          </div>
-
-          <!-- Row 7 -->
-          <div class="py-2.5 px-2.5 grid grid-cols-12 items-center">
-            <div class="col-span-1 text-xs font-bold text-slate-600">7</div>
-            <div class="col-span-5 flex items-center gap-2.5 min-w-0">
-              <img src="https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=120&auto=format&fit=crop&q=80"
-                   onerror="this.src='https://placehold.co/80x80/e2e8f0/334155?text=V'"
-                   alt="vikas_09" class="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200" />
-              <span class="text-xs font-bold text-slate-900 truncate">vikas_09</span>
-            </div>
-            <div class="col-span-3 text-center text-xs font-semibold text-slate-600">142</div>
-            <div class="col-span-3 flex items-center justify-end gap-1.5">
-              <div class="w-4 h-4 rounded-full t-coin flex items-center justify-center shrink-0">
-                <span class="text-amber-900 font-extrabold text-[9px]">T</span>
-              </div>
-              <span class="text-xs font-extrabold text-[#5925dc] whitespace-nowrap">21,300 T</span>
-            </div>
-          </div>
-
-          <!-- Row 8 -->
-          <div class="py-2.5 px-2.5 grid grid-cols-12 items-center">
-            <div class="col-span-1 text-xs font-bold text-slate-600">8</div>
-            <div class="col-span-5 flex items-center gap-2.5 min-w-0">
-              <img src="https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=120&auto=format&fit=crop&q=80"
-                   onerror="this.src='https://placehold.co/80x80/e2e8f0/334155?text=K'"
-                   alt="kavya02" class="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200" />
-              <span class="text-xs font-bold text-slate-900 truncate">kavya02</span>
-            </div>
-            <div class="col-span-3 text-center text-xs font-semibold text-slate-600">128</div>
-            <div class="col-span-3 flex items-center justify-end gap-1.5">
-              <div class="w-4 h-4 rounded-full t-coin flex items-center justify-center shrink-0">
-                <span class="text-amber-900 font-extrabold text-[9px]">T</span>
-              </div>
-              <span class="text-xs font-extrabold text-[#5925dc] whitespace-nowrap">19,200 T</span>
-            </div>
-          </div>
-
-          <!-- Row 9 -->
-          <div class="py-2.5 px-2.5 grid grid-cols-12 items-center">
-            <div class="col-span-1 text-xs font-bold text-slate-600">9</div>
-            <div class="col-span-5 flex items-center gap-2.5 min-w-0">
-              <img src="https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=120&auto=format&fit=crop&q=80"
-                   onerror="this.src='https://placehold.co/80x80/e2e8f0/334155?text=AF'"
-                   alt="arjun_fit" class="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200" />
-              <span class="text-xs font-bold text-slate-900 truncate">arjun_fit</span>
-            </div>
-            <div class="col-span-3 text-center text-xs font-semibold text-slate-600">120</div>
-            <div class="col-span-3 flex items-center justify-end gap-1.5">
-              <div class="w-4 h-4 rounded-full t-coin flex items-center justify-center shrink-0">
-                <span class="text-amber-900 font-extrabold text-[9px]">T</span>
-              </div>
-              <span class="text-xs font-extrabold text-[#5925dc] whitespace-nowrap">18,000 T</span>
-            </div>
-          </div>
-
-          <!-- Row 10 -->
-          <div class="py-2.5 px-2.5 grid grid-cols-12 items-center">
-            <div class="col-span-1 text-xs font-bold text-slate-600">10</div>
-            <div class="col-span-5 flex items-center gap-2.5 min-w-0">
-              <img src="https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=120&auto=format&fit=crop&q=80"
-                   onerror="this.src='https://placehold.co/80x80/e2e8f0/334155?text=DC'"
-                   alt="deepak_coder" class="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200" />
-              <span class="text-xs font-bold text-slate-900 truncate">deepak_coder</span>
-            </div>
-            <div class="col-span-3 text-center text-xs font-semibold text-slate-600">110</div>
-            <div class="col-span-3 flex items-center justify-end gap-1.5">
-              <div class="w-4 h-4 rounded-full t-coin flex items-center justify-center shrink-0">
-                <span class="text-amber-900 font-extrabold text-[9px]">T</span>
-              </div>
-              <span class="text-xs font-extrabold text-[#5925dc] whitespace-nowrap">16,500 T</span>
-            </div>
-          </div>
+            <?php endforeach; ?>
+          <?php endif; ?>
         </div>
 
-        <!-- Current User Highlight Bar (#26 You) -->
+        <!-- Current User Highlight Bar -->
         <div class="mt-2 bg-[#f1edff] border border-purple-200/70 rounded-2xl py-2.5 px-3 grid grid-cols-12 items-center">
-          <div class="col-span-2 text-xs font-extrabold text-[#5925dc]">#26</div>
+          <div class="col-span-2 text-xs font-extrabold text-[#5925dc]">#<?= e((string) (int) ($myRank['rank_position'] ?? 0)) ?></div>
           <div class="col-span-4 flex items-center gap-2.5 min-w-0 -ml-2">
-            <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80"
+            <img src="<?= e(lb_avatar($myRank, 'YOU')) ?>"
                  onerror="this.src='https://placehold.co/80x80/ddd6fe/5b21b6?text=YOU'"
                  alt="You" class="w-9 h-9 rounded-full object-cover shrink-0 border-2 border-white shadow-sm" />
             <span class="text-xs font-extrabold text-[#5925dc] truncate">You</span>
           </div>
-          <div class="col-span-3 text-center text-xs font-semibold text-slate-600">12</div>
+          <div class="col-span-3 text-center text-xs font-semibold text-slate-600"><?= e(number_format((int) ($myRank['referral_count'] ?? $user['referral_count']))) ?></div>
           <div class="col-span-3 flex items-center justify-end gap-1.5">
             <div class="w-4 h-4 rounded-full t-coin flex items-center justify-center shrink-0">
               <span class="text-amber-900 font-extrabold text-[9px]">T</span>
             </div>
-            <span class="text-xs font-extrabold text-[#5925dc] whitespace-nowrap">1,800 T</span>
+            <span class="text-xs font-extrabold text-[#5925dc] whitespace-nowrap"><?= e(t_format((float) ($myRank['total_earned_t'] ?? $user['total_earned_t']))) ?></span>
           </div>
         </div>
 
@@ -423,6 +416,13 @@
         toast.classList.remove('opacity-100', 'translate-y-0');
             toast.classList.add('opacity-0', 'translate-y-3');
       }, 2000);
+    }
+
+    if (window.Telegram && window.Telegram.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand();
+      tg.setHeaderColor('#5925dc');
     }
 
     </script>

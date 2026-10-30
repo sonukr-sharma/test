@@ -168,6 +168,10 @@ function broadcast_icon(string $mediaType): array
           <i class="fa-solid fa-wallet text-slate-400 w-5 text-center text-base"></i>
           <span>Withdrawals</span>
         </a>
+        <a href="channels.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
+          <i class="fa-solid fa-tower-broadcast text-slate-400 w-5 text-center text-base"></i>
+          <span>Channels</span>
+        </a>
         <a href="settings.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
           <i class="fa-solid fa-gear text-slate-400 w-5 text-center text-base"></i>
           <span>Settings</span>

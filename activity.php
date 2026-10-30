@@ -1,9 +1,50 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/config.php';
+
+$user = require_onboarded_user();
+
+$totalEarnedT  = (float) $user['total_earned_t'];
+$referralCount = (int) $user['referral_count'];
+
+$perPage = 20;
+$page    = max(1, (int) ($_GET['page'] ?? 1));
+$offset  = ($page - 1) * $perPage;
+
+$transactions = [];
+$totalRows    = 0;
+
+try {
+    $stmt = db()->prepare('SELECT COUNT(*) FROM `wallet_transactions` WHERE `user_id` = :uid');
+    $stmt->execute([':uid' => $user['id']]);
+    $totalRows = (int) $stmt->fetchColumn();
+
+    $stmt = db()->prepare(
+        'SELECT `type`, `direction`, `amount_t`, `balance_after_t`, `description`, `created_at`
+           FROM `wallet_transactions`
+          WHERE `user_id` = :uid
+          ORDER BY `created_at` DESC, `id` DESC
+          LIMIT :lim OFFSET :off'
+    );
+    $stmt->bindValue(':uid', $user['id'], PDO::PARAM_INT);
+    $stmt->bindValue(':lim', $perPage, PDO::PARAM_INT);
+    $stmt->bindValue(':off', $offset, PDO::PARAM_INT);
+    $stmt->execute();
+    $transactions = $stmt->fetchAll();
+} catch (Throwable $e) {
+    error_log('activity.php failed: ' . $e->getMessage());
+}
+
+$totalPages = max(1, (int) ceil($totalRows / $perPage));
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Activity - Refer & Earn</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Font Awesome 6 CDN -->
@@ -55,7 +96,7 @@
         <!-- Right: Masked Telegram Chat ID -->
                 <div class="flex items-center gap-2 bg-white/15 backdrop-blur-sm border border-white/10 rounded-full px-3 py-1.5">
                   <i class="fa-brands fa-telegram text-white text-sm"></i>
-                  <span class="text-white text-xs font-bold tracking-wide">ID: *****6789</span>
+                  <span class="text-white text-xs font-bold tracking-wide">ID: <?= e(mask_telegram_id($user['telegram_id'])) ?></span>
                 </div>
       </div>
     </div>
@@ -70,12 +111,12 @@
             <div class="text-xs font-semibold text-slate-500">Total Earned</div>
             <div class="flex items-center gap-2 mt-1">
               <div class="w-8 h-8 rounded-full t-coin flex items-center justify-center shrink-0"></div>
-              <div class="text-2xl font-extrabold text-slate-900 leading-none">1,200 T</div>
+              <div class="text-2xl font-extrabold text-slate-900 leading-none"><?= e(t_format($totalEarnedT)) ?></div>
             </div>
           </div>
           <div class="text-right">
             <div class="text-xs font-semibold text-slate-500">Total Referrals</div>
-            <div class="text-2xl font-extrabold text-[#5925dc] leading-none mt-1">12</div>
+            <div class="text-2xl font-extrabold text-[#5925dc] leading-none mt-1"><?= e(number_format($referralCount)) ?></div>
           </div>
         </div>
       </div>
@@ -88,108 +129,68 @@
         </div>
 
         <div class="divide-y divide-slate-100">
-          <!-- Item 1 -->
-          <div class="py-2.5 first:pt-0 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-full bg-[#e8f8f0] text-emerald-600 flex items-center justify-center shrink-0">
-                <i class="fa-solid fa-user-plus text-sm"></i>
+          <?php if ($transactions === []): ?>
+            <div class="py-8 text-center">
+              <div class="w-12 h-12 mx-auto rounded-full bg-[#f4f4f8] text-slate-400 flex items-center justify-center">
+                <i class="fa-regular fa-clock text-lg"></i>
               </div>
-              <div>
-                <div class="text-xs font-extrabold text-slate-900">Referral Reward</div>
-                <div class="text-[11px] font-medium text-slate-500 mt-0.5">@rahul123 joined using your link</div>
+              <p class="mt-2.5 text-xs font-semibold text-slate-500">No activity yet</p>
+              <p class="mt-1 text-[11px] text-slate-400">Your referral rewards will appear here.</p>
+            </div>
+          <?php else: ?>
+            <?php foreach ($transactions as $index => $tx): ?>
+              <?php
+                $style    = wallet_type_style((string) $tx['type']);
+                $isCredit = ($tx['direction'] ?? 'credit') === 'credit';
+                $rowClass = $index === 0 ? 'py-2.5 first:pt-0' : 'py-2.5';
+                $rowClass .= $index === count($transactions) - 1 ? ' last:pb-0' : '';
+              ?>
+              <div class="<?= e($rowClass) ?> flex items-center justify-between">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="w-10 h-10 rounded-full <?= e($style['bg']) ?> <?= e($style['text']) ?> flex items-center justify-center shrink-0">
+                    <i class="fa-solid <?= e($style['icon']) ?> text-sm"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <div class="text-xs font-extrabold text-slate-900"><?= e(wallet_type_label((string) $tx['type'])) ?></div>
+                    <div class="text-[11px] font-medium text-slate-500 mt-0.5 truncate"><?= e($tx['description'] ?: 'Wallet update') ?></div>
+                  </div>
+                </div>
+                <div class="text-right shrink-0 ml-2">
+                  <div class="text-xs font-extrabold <?= $isCredit ? 'text-emerald-600' : 'text-rose-500' ?>">
+                    <?= $isCredit ? '+' : '-' ?><?= e(t_format((float) $tx['amount_t'])) ?>
+                  </div>
+                  <div class="text-[10px] font-medium text-slate-400 mt-0.5"><?= e(activity_time($tx['created_at'] ?? null)) ?></div>
+                </div>
               </div>
-            </div>
-            <div class="text-right">
-                        <div class="text-xs font-extrabold text-emerald-600">+150 T</div>
-              <div class="text-[10px] font-medium text-slate-400 mt-0.5">29 Oct 2026, 10:24 AM</div>
-            </div>
-          </div>
-
-          <!-- Item 2 -->
-          <div class="py-2.5 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-[#eaf2ff] text-blue-600 flex items-center justify-center shrink-0">
-                <i class="fa-solid fa-user-plus text-sm"></i>
-              </div>
-              <div>
-                <div class="text-xs font-extrabold text-slate-900">Referral Reward</div>
-                <div class="text-[11px] font-medium text-slate-500 mt-0.5">@priya99 joined using your link</div>
-              </div>
-            </div>
-            <div class="text-right">
-                        <div class="text-xs font-extrabold text-emerald-600">+150 T</div>
-              <div class="text-[10px] font-medium text-slate-400 mt-0.5">28 Oct 2026, 06:12 PM</div>
-            </div>
-          </div>
-
-          <!-- Item 3 -->
-          <div class="py-2.5 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-[#fff6e4] text-amber-600 flex items-center justify-center shrink-0">
-                <i class="fa-solid fa-user-plus text-sm"></i>
-              </div>
-              <div>
-                <div class="text-xs font-extrabold text-slate-900">Referral Reward</div>
-                <div class="text-[11px] font-medium text-slate-500 mt-0.5">@amit_k joined using your link</div>
-              </div>
-            </div>
-            <div class="text-right">
-                        <div class="text-xs font-extrabold text-emerald-600">+150 T</div>
-              <div class="text-[10px] font-medium text-slate-400 mt-0.5">27 Oct 2026, 11:03 AM</div>
-            </div>
-          </div>
-
-          <!-- Item 4 -->
-          <div class="py-2.5 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-[#f3e8ff] text-purple-600 flex items-center justify-center shrink-0">
-                <i class="fa-solid fa-user-plus text-sm"></i>
-              </div>
-              <div>
-                <div class="text-xs font-extrabold text-slate-900">Referral Reward</div>
-                <div class="text-[11px] font-medium text-slate-500 mt-0.5">@sneha_21 joined using your link</div>
-              </div>
-            </div>
-            <div class="text-right">
-                        <div class="text-xs font-extrabold text-emerald-600">+150 T</div>
-              <div class="text-[10px] font-medium text-slate-400 mt-0.5">26 Oct 2026, 09:45 AM</div>
-            </div>
-          </div>
-
-          <!-- Item 5 -->
-          <div class="py-2.5 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-[#ffeef2] text-rose-500 flex items-center justify-center shrink-0">
-                <i class="fa-solid fa-user-plus text-sm"></i>
-              </div>
-              <div>
-                <div class="text-xs font-extrabold text-slate-900">Referral Reward</div>
-                <div class="text-[11px] font-medium text-slate-500 mt-0.5">@vivek_07 joined using your link</div>
-              </div>
-            </div>
-            <div class="text-right">
-                        <div class="text-xs font-extrabold text-emerald-600">+150 T</div>
-              <div class="text-[10px] font-medium text-slate-400 mt-0.5">25 Oct 2026, 04:30 PM</div>
-            </div>
-          </div>
-
-          <!-- Item 6 -->
-          <div class="py-2.5 last:pb-0 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-[#e0f2fe] text-sky-600 flex items-center justify-center shrink-0">
-                <i class="fa-solid fa-user-plus text-sm"></i>
-              </div>
-              <div>
-                <div class="text-xs font-extrabold text-slate-900">Referral Reward</div>
-                <div class="text-[11px] font-medium text-slate-500 mt-0.5">@kiran_99 joined using your link</div>
-              </div>
-            </div>
-            <div class="text-right">
-                        <div class="text-xs font-extrabold text-emerald-600">+150 T</div>
-              <div class="text-[10px] font-medium text-slate-400 mt-0.5">24 Oct 2026, 02:15 PM</div>
-            </div>
-          </div>
+            <?php endforeach; ?>
+          <?php endif; ?>
         </div>
+
+        <?php if ($totalPages > 1): ?>
+          <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+            <?php if ($page > 1): ?>
+              <a href="activity.php?page=<?= e((string) ($page - 1)) ?>" class="text-[11px] font-bold text-[#5925dc] flex items-center gap-1">
+                <i class="fa-solid fa-chevron-left text-[9px]"></i><span>Previous</span>
+              </a>
+            <?php else: ?>
+              <span class="text-[11px] font-bold text-slate-300 flex items-center gap-1">
+                <i class="fa-solid fa-chevron-left text-[9px]"></i><span>Previous</span>
+              </span>
+            <?php endif; ?>
+
+            <span class="text-[10px] font-semibold text-slate-400">Page <?= e((string) $page) ?> of <?= e((string) $totalPages) ?></span>
+
+            <?php if ($page < $totalPages): ?>
+              <a href="activity.php?page=<?= e((string) ($page + 1)) ?>" class="text-[11px] font-bold text-[#5925dc] flex items-center gap-1">
+                <span>Next</span><i class="fa-solid fa-chevron-right text-[9px]"></i>
+              </a>
+            <?php else: ?>
+              <span class="text-[11px] font-bold text-slate-300 flex items-center gap-1">
+                <span>Next</span><i class="fa-solid fa-chevron-right text-[9px]"></i>
+              </span>
+            <?php endif; ?>
+          </div>
+        <?php endif; ?>
       </div>
 
     </div>
@@ -223,5 +224,14 @@
           </nav>
 
   </div>
+
+  <script>
+    if (window.Telegram && window.Telegram.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand();
+      tg.setHeaderColor('#5925dc');
+    }
+  </script>
 </body>
 </html>
