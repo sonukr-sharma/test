@@ -150,7 +150,7 @@ Open these in a browser:
 | `https://yourdomain.com/config.php` | **403 Forbidden** |
 
 If `.env` or `schema.sql` returns content, your host is ignoring `.htaccess`
-(nginx does). See [§10 nginx](#10-if-you-are-on-nginx) below.
+(nginx does). See [§12 nginx](#12-if-you-are-on-nginx) below.
 
 ---
 
@@ -408,7 +408,90 @@ about a minute. If you expect audiences in the tens of thousands, raise
 
 ---
 
-## 11. If you are on nginx
+## 11. Device fingerprinting
+
+The web app records a device fingerprint on every Telegram login so you can spot
+one person running several accounts. It is **advisory only** — nothing is
+blocked, banned or held because of it.
+
+### How it works
+
+1. `asset/webapp-auth.js` loads FingerprintJS from `openfpcdn.io` and reads
+   `visitorId`.
+2. It posts `{initData, fingerprint, platform}` to `webapp-auth.php`.
+3. `webapp-auth.php` verifies the `initData` signature **first**. Only then does
+   it resolve the Telegram ID to a `users` row and call `record_user_device()`.
+4. `user_devices` stores one row per `(user_id, fingerprint)` pair, and
+   `users.device_count` is kept in sync.
+
+Because the fingerprint is only stored after the signature check, it is always
+attached to a genuine Telegram identity — a client cannot claim to be someone
+else's device.
+
+### The flag
+
+An account is flagged once it has been seen on `device_flag_threshold` distinct
+devices (default **3**). Flagging sets `users.device_flagged_at` and is visible
+in **Admin → Devices**.
+
+The flag is never cleared automatically. Raising the threshold later does not
+un-flag an account that was already reviewed, so an admin decision is not
+silently undone.
+
+### Reviewing
+
+**Admin → Devices** has two views:
+
+| View | Shows |
+| --- | --- |
+| Flagged Accounts | Accounts at or above the threshold, with device count and balance |
+| Shared Devices | Fingerprints seen on more than one account, with the usernames |
+
+### Why it is only a signal
+
+Telegram's iOS WebView is the same engine with the same screen size and settings
+for many people, so **different users frequently produce identical
+fingerprints**. The same person on a different platform (phone app, desktop app,
+web) also produces a *different* fingerprint, so switching platforms is not
+detected.
+
+Treat a match as a reason to look at an account, never as proof. Combine it with
+the stronger checks you already have: a unique UPI ID and a verified phone
+number.
+
+### If the CDN is blocked
+
+`asset/webapp-auth.js` gives FingerprintJS 4 seconds to load. If the CDN is
+unreachable — blocked network, old WebView, slow connection — the fingerprint is
+sent as an empty string and login continues normally. The account simply is not
+tracked for that session.
+
+To self-host instead, download `fingerprintjs/v4/iife.min.js` and change
+`FP_CDN` in `asset/webapp-auth.js` to the local path.
+
+### Schema
+
+```sql
+-- one row per (user, device)
+CREATE TABLE `user_devices` (
+  `user_id`     BIGINT UNSIGNED NOT NULL,
+  `fingerprint` VARCHAR(64)     NOT NULL,
+  `platform`    VARCHAR(32)     DEFAULT NULL,
+  `user_agent`  VARCHAR(255)    DEFAULT NULL,
+  `first_seen_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `last_seen_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `seen_count`  INT UNSIGNED NOT NULL DEFAULT 1,
+  UNIQUE KEY `uq_user_devices_pair` (`user_id`, `fingerprint`),
+  KEY `idx_user_devices_fingerprint` (`fingerprint`)
+);
+```
+
+`users` gained `device_count` and `device_flagged_at`. Both are in `schema.sql`;
+on an existing install run the `ALTER TABLE` from that file.
+
+---
+
+## 12. If you are on nginx
 
 `.htaccess` is Apache-only. Add the equivalent to your server block:
 
@@ -446,7 +529,7 @@ server {
 
 ---
 
-## 12. Post-launch checklist
+## 13. Post-launch checklist
 
 - [ ] `APP_DEBUG=0` and `APP_ENV=production` in `.env`
 - [ ] `.env` returns **403** in a browser
@@ -463,7 +546,7 @@ server {
 
 ---
 
-## 13. Backups
+## 14. Backups
 
 Nightly `mysqldump` via cron:
 
@@ -477,7 +560,7 @@ financial records — never prune them.
 
 ---
 
-## 14. Updating the site
+## 15. Updating the site
 
 ```bash
 git pull origin main

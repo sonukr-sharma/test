@@ -314,6 +314,9 @@ function default_settings(): array
         'require_bot_start'            => true,
         'channel_gate_message'         => 'Join our channels to unlock Refer & Earn and start earning rewards.',
         'channel_gate_strict'          => false,
+
+        // Device fingerprinting (advisory flagging only)
+        'device_flag_threshold'        => 3,
     ];
 }
 
@@ -1429,6 +1432,149 @@ function require_user(): array
     }
 
     return $user;
+}
+
+/* ---------------------------------------------------------------------
+ |  9a. Device fingerprinting
+ * ------------------------------------------------------------------- */
+
+/**
+ * How many distinct devices an account may use before it is flagged.
+ */
+function device_flag_threshold(): int
+{
+    $value = (int) setting('device_flag_threshold', 3);
+
+    return $value > 0 ? $value : 3;
+}
+
+/**
+ * Normalise a client-supplied fingerprint.
+ *
+ * FingerprintJS returns a 32-character hex visitorId. Anything else is either a
+ * fallback the client computed or junk, so it is hashed down to a fixed-width
+ * value: the column is VARCHAR(64) and an unvalidated string would otherwise
+ * let a client write arbitrary data or blow the index.
+ *
+ * Returns '' when the input is unusable, which callers treat as "no signal".
+ */
+function normalise_fingerprint(mixed $raw): string
+{
+    if (!is_string($raw)) {
+        return '';
+    }
+
+    $raw = trim($raw);
+
+    if ($raw === '' || strlen($raw) > 512) {
+        return '';
+    }
+
+    // FingerprintJS visitorId: 32 lowercase hex characters.
+    if (preg_match('/^[a-f0-9]{32}$/i', $raw) === 1) {
+        return strtolower($raw);
+    }
+
+    // Any other client value is hashed so the stored form is always safe.
+    return substr(hash('sha256', $raw), 0, 32);
+}
+
+/**
+ * Record that a verified user was seen on a device.
+ *
+ * Called from webapp-auth.php *after* the initData signature has been checked,
+ * so `$userId` is a genuine Telegram identity rather than a client claim.
+ *
+ * The account is flagged once it has been seen on `device_flag_threshold()`
+ * distinct devices. Flagging is advisory: it sets `users.device_flagged_at` for
+ * the admin panel and never blocks, bans or holds anything, because Telegram's
+ * iOS WebView hands out identical fingerprints to different people.
+ *
+ * @return array{device_count: int, flagged: bool, new_device: bool}
+ */
+function record_user_device(int $userId, string $fingerprint, string $platform = '', string $userAgent = ''): array
+{
+    $result = ['device_count' => 0, 'flagged' => false, 'new_device' => false];
+
+    if ($userId <= 0 || $fingerprint === '') {
+        return $result;
+    }
+
+    $platform  = mb_substr(trim($platform), 0, 32);
+    $userAgent = mb_substr(trim($userAgent), 0, 255);
+
+    try {
+        $pdo = db();
+
+        $stmt = $pdo->prepare(
+            'INSERT INTO `user_devices` (`user_id`, `fingerprint`, `platform`, `user_agent`)
+             VALUES (:uid, :fp, :platform, :ua)
+             ON DUPLICATE KEY UPDATE
+                `last_seen_at` = NOW(),
+                `seen_count`   = `seen_count` + 1,
+                `platform`     = VALUES(`platform`),
+                `user_agent`   = VALUES(`user_agent`)'
+        );
+        $stmt->execute([
+            ':uid'      => $userId,
+            ':fp'       => $fingerprint,
+            ':platform' => $platform !== '' ? $platform : null,
+            ':ua'       => $userAgent !== '' ? $userAgent : null,
+        ]);
+
+        $result['new_device'] = $stmt->rowCount() === 1;
+
+        $countStmt = $pdo->prepare('SELECT COUNT(*) FROM `user_devices` WHERE `user_id` = :uid');
+        $countStmt->execute([':uid' => $userId]);
+        $deviceCount = (int) $countStmt->fetchColumn();
+
+        $result['device_count'] = $deviceCount;
+        $result['flagged']      = $deviceCount >= device_flag_threshold();
+
+        // Only ever set the flag, never clear it: an admin who has reviewed the
+        // account should not have that review silently undone by a later login.
+        $pdo->prepare(
+            'UPDATE `users`
+                SET `device_count` = :count,
+                    `device_flagged_at` = CASE
+                        WHEN :flag = 1 AND `device_flagged_at` IS NULL THEN NOW()
+                        ELSE `device_flagged_at`
+                    END
+              WHERE `id` = :id'
+        )->execute([
+            ':count' => $deviceCount,
+            ':flag'  => $result['flagged'] ? 1 : 0,
+            ':id'    => $userId,
+        ]);
+    } catch (Throwable $e) {
+        error_log('record_user_device failed: ' . $e->getMessage());
+    }
+
+    return $result;
+}
+
+/**
+ * How many distinct accounts have been seen on a given fingerprint.
+ *
+ * The reverse of `record_user_device()`. A high number is a shared-device
+ * signal worth reviewing, not proof of abuse.
+ */
+function fingerprint_account_count(string $fingerprint): int
+{
+    if ($fingerprint === '') {
+        return 0;
+    }
+
+    try {
+        $stmt = db()->prepare('SELECT COUNT(DISTINCT `user_id`) FROM `user_devices` WHERE `fingerprint` = :fp');
+        $stmt->execute([':fp' => $fingerprint]);
+
+        return (int) $stmt->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('fingerprint_account_count failed: ' . $e->getMessage());
+
+        return 0;
+    }
 }
 
 /* ---------------------------------------------------------------------

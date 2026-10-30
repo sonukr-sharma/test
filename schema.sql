@@ -92,6 +92,8 @@ CREATE TABLE `users` (
   `bot_started_at`     DATETIME        DEFAULT NULL COMMENT 'Set when the bot first receives a message from this user',
   `channels_verified_at` DATETIME      DEFAULT NULL COMMENT 'Last time every required channel membership was confirmed',
   `pending_referral_code` VARCHAR(32)  DEFAULT NULL COMMENT 'Referral code captured by /start, applied inside the web app',
+  `device_count`       INT UNSIGNED    NOT NULL DEFAULT 0 COMMENT 'Distinct device fingerprints seen for this user',
+  `device_flagged_at`  DATETIME        DEFAULT NULL COMMENT 'Set when device_count reached device_flag_threshold',
   `joined_at`          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `last_active_at`     DATETIME        DEFAULT NULL,
   `created_at`         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -102,9 +104,41 @@ CREATE TABLE `users` (
   KEY `idx_users_username` (`username`),
   KEY `idx_users_referred_by` (`referred_by_id`),
   KEY `idx_users_status` (`status`),
+  KEY `idx_users_device_flagged` (`device_flagged_at`),
   KEY `idx_users_leaderboard` (`referral_count` DESC, `total_earned_t` DESC),
   CONSTRAINT `fk_users_referred_by`
     FOREIGN KEY (`referred_by_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================================
+--  2b. USER DEVICES  (device fingerprinting — webapp-auth.php)
+-- =====================================================================
+--
+-- One row per (user, fingerprint) pair. A fingerprint is only ever recorded
+-- after `initData` has been signature-verified, so the Telegram ID it is
+-- attached to is genuine. The table exists to answer two questions:
+--
+--   * how many distinct devices has this one account used?  -> users.device_count
+--   * how many accounts share this one device?              -> the reverse query
+--
+-- Fingerprints are advisory only. Telegram's iOS WebView produces identical
+-- fingerprints for different people, so a match is a review signal, never proof.
+
+DROP TABLE IF EXISTS `user_devices`;
+CREATE TABLE `user_devices` (
+  `id`             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id`        BIGINT UNSIGNED NOT NULL,
+  `fingerprint`    VARCHAR(64)     NOT NULL COMMENT 'FingerprintJS visitorId (or a fallback hash)',
+  `platform`       VARCHAR(32)     DEFAULT NULL COMMENT 'Telegram.WebApp.platform: android / ios / tdesktop / web',
+  `user_agent`     VARCHAR(255)    DEFAULT NULL,
+  `first_seen_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `last_seen_at`   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `seen_count`     INT UNSIGNED    NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_user_devices_pair` (`user_id`, `fingerprint`),
+  KEY `idx_user_devices_fingerprint` (`fingerprint`),
+  CONSTRAINT `fk_user_devices_user`
+    FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================================
@@ -432,6 +466,10 @@ INSERT INTO `settings` (`key`, `value`, `data_type`, `group_name`, `label`) VALU
   ('allow_registration',       '1',                            'boolean', 'platform',  'Allow New User Registration'),
   ('withdrawals_enabled',      '1',                            'boolean', 'platform',  'Withdrawals Enabled'),
   ('withdrawal_processing_hours', '24',                        'integer', 'withdrawal','Processing time shown to users (hours)'),
+
+  -- Device fingerprinting: flag an account once it has been seen on this many
+  -- distinct devices. Advisory only — see user_devices in schema.sql.
+  ('device_flag_threshold',    '3',                            'integer', 'security',  'Devices per User Before Flagging'),
 
   -- Channel gate: force users to join channels before the mini app unlocks.
   ('require_channel_join',     '0',                            'boolean', 'gate',      'Require Channel Membership'),
