@@ -29,3 +29,6 @@ composer.lock
 # --- Local uploads / temp --------------------------------------------
 /tmp/
 /uploads/
+
+# --- Local dev server pid ---------------------------------------------
+.devpid

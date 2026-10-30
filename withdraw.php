@@ -131,6 +131,7 @@ try {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Withdraw - Refer & Earn</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="asset/webapp-auth.js"></script>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Font Awesome 6 CDN -->

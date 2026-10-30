@@ -184,10 +184,21 @@ Go to **Admin → Settings** and fill in:
 
 | Setting | Value |
 |---|---|
-| `bot_token` | The token from @BotFather |
+| `bot_token` | The token from @BotFather. **Required** — without it the mini app cannot verify the Telegram identity and every page shows the "Open inside Telegram" screen. |
 | `bot_username` | Your bot's username **without** the `@` |
 | `bot_web_app_url` | **Leave blank** — it follows the current domain automatically. Set it only to pin a specific URL. |
 | `webhook_secret` | Any long random string (letters + digits) |
+
+### How the mini app authenticates
+
+Telegram passes the signed `initData` payload in the URL **fragment**
+(`#tgWebAppData=...`), which browsers never send to the server. So on first
+load the page posts it to `webapp-auth.php`, which verifies the HMAC signature
+against `bot_token` and stores it in the session. Every later request resolves
+the user from that session value.
+
+If `bot_token` is blank or wrong, the signature check fails and the app falls
+back to the "Open inside Telegram" screen — that is the symptom to look for.
 
 The same applies to `withdrawal_api_url`: it is an optional external payout hook
 and nothing in this app calls it. Leave it blank unless you are forwarding
@@ -345,6 +356,7 @@ re-import the whole file over a live database — it drops tables).
 | "Database connection failed" | Wrong `DB_*` values in `.env`, or the DB user lacks privileges. |
 | Login says "Invalid credentials" | The `admins` row was not seeded, or the password hash was overwritten. |
 | Mini app opens but shows no data | `telegram_id` mismatch — the user row was created by a different bot. |
+| "Open inside Telegram" screen inside Telegram | `bot_token` is blank or wrong, so `webapp-auth.php` cannot verify `initData`. Set it in Admin → Settings. |
 | Webhook returns 401 | `webhook_secret` in Settings does not match the `secret_token` Telegram was registered with. Press **Rotate** then **Set** again. |
 | Lock screen never goes away | `require_bot_start` is on and the user has not sent `/start`, or the channel check is failing in strict mode. |
 | Referral never credited | The referral is applied on the user's **first app load** after `/start CODE`. If they never open the app, it stays pending by design. |

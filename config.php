@@ -807,7 +807,10 @@ function telegram_validate_init_data(string $initData): ?array
  *   1. `initData` POST field (WebApp form submissions)
  *   2. `X-Telegram-Init-Data` header
  *   3. `tgWebAppData` query string (WebApp boot)
- *   4. `tg_id` query string — development fallback only
+ *   4. `tg_init_data` session value — set by webapp-auth.php after the
+ *      client-side handshake, because Telegram delivers initData in the URL
+ *      fragment and fragments are never sent to the server.
+ *   5. `tg_id` query string — development fallback only
  *
  * @return array<string, mixed>|null
  */
@@ -830,6 +833,8 @@ function telegram_identity(): ?array
         $initData = (string) $_SERVER['HTTP_X_TELEGRAM_INIT_DATA'];
     } elseif (!empty($_GET['tgWebAppData']) && is_string($_GET['tgWebAppData'])) {
         $initData = $_GET['tgWebAppData'];
+    } elseif (!empty($_SESSION['tg_init_data']) && is_string($_SESSION['tg_init_data'])) {
+        $initData = $_SESSION['tg_init_data'];
     }
 
     if ($initData !== '') {
@@ -839,6 +844,9 @@ function telegram_identity(): ?array
             $identity = $user;
             return $identity;
         }
+
+        // Drop a stale or invalid session payload so the client can retry.
+        unset($_SESSION['tg_init_data']);
     }
 
     // Development fallback: ?tg_id=900000001
@@ -1289,6 +1297,8 @@ function render_telegram_gate(): never
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Open in Telegram — <?= e(APP_NAME) ?></title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="<?= e(APP_URL) ?>/asset/webapp-auth.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
