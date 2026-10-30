@@ -390,13 +390,15 @@ $s = settings();
                 <div class="mt-5 bg-[#f3f1fe] rounded-xl p-3">
                   <p class="text-[11px] font-semibold text-slate-700 mb-1.5">POST payload placeholders</p>
                   <div class="space-y-1 font-mono text-[11px] text-slate-600">
-                    <p><span class="text-[#6d37f7]">{amt}</span> — withdrawal amount</p>
+                    <p><span class="text-[#6d37f7]">{amt}</span> — payout amount in ₹ (already converted from T)</p>
                     <p><span class="text-[#6d37f7]">{upi}</span> — user's UPI ID</p>
                     <p><span class="text-[#6d37f7]">{txid}</span> — transaction ID <span class="text-slate-400">(optional)</span></p>
                   </div>
                   <p class="mt-2 text-[11px] leading-relaxed text-slate-500">
                     Placeholders are substituted in the URL. The same values are also sent as a JSON body
                     (<code class="font-mono">amt</code>, <code class="font-mono">upi</code>, <code class="font-mono">txid</code>).
+                    <strong class="text-slate-700">amt is the rupee value</strong> — the T-coin amount is converted with the
+                    Coin → ₹ rate above, so 2,000 T is sent as <code class="font-mono">200.00</code>.
                     A 2xx response marks the payout completed; a <code class="font-mono">transaction_id</code>,
                     <code class="font-mono">txid</code>, <code class="font-mono">utr</code> or <code class="font-mono">reference</code>
                     field is stored as the transaction ID.

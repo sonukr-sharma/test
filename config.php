@@ -460,13 +460,17 @@ function first_withdrawal_max_t(): float
 /**
  * Forward a payout to the configured withdrawal API.
  *
+ * `$amountInr` is the rupee value actually being paid out — never the T-coin
+ * amount. Callers convert with `t_to_inr()` first, because a payout service
+ * transfers money, not platform coins.
+ *
  * The endpoint may contain `{amt}`, `{upi}` and `{txid}` placeholders; they are
  * substituted before the request. The same values are also sent as a JSON body
  * so an endpoint that reads the payload instead of the query string works too.
  *
  * @return array{ok: bool, transaction_id: ?string, response: mixed, error: ?string}
  */
-function withdrawal_api_payout(float $amountT, string $upiId, string $txid = '', int $timeout = 20): array
+function withdrawal_api_payout(float $amountInr, string $upiId, string $txid = '', int $timeout = 20): array
 {
     $endpoint = withdrawal_api_url();
 
@@ -479,14 +483,18 @@ function withdrawal_api_payout(float $amountT, string $upiId, string $txid = '',
         ];
     }
 
+    // Two decimals: a payout service expects a currency amount, not a float
+    // with binary rounding noise such as 199.99999999999997.
+    $amountInr = round($amountInr, 2);
+
     $url = strtr($endpoint, [
-        '{amt}'  => (string) $amountT,
+        '{amt}'  => number_format($amountInr, 2, '.', ''),
         '{upi}'  => $upiId,
         '{txid}' => $txid,
     ]);
 
     $payload = json_encode([
-        'amt'  => $amountT,
+        'amt'  => $amountInr,
         'upi'  => $upiId,
         'txid' => $txid,
     ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -572,6 +580,32 @@ function withdrawal_api_payout(float $amountT, string $upiId, string $txid = '',
 }
 
 /**
+ * The rupee value frozen on a withdrawal row when the user requested it.
+ *
+ * `withdrawals.amount_inr` is written at request time from the then-current
+ * `coin_to_inr_rate`. Reading it back keeps the payout stable: an admin who
+ * changes the rate afterwards must not change what an already-requested
+ * withdrawal pays out. Falls back to converting `$amountT` for legacy rows
+ * where `amount_inr` is still 0.
+ */
+function withdrawal_stored_inr(int $withdrawalId, float $amountT): float
+{
+    try {
+        $stmt = db()->prepare('SELECT `amount_inr` FROM `withdrawals` WHERE `id` = :id LIMIT 1');
+        $stmt->execute([':id' => $withdrawalId]);
+        $stored = $stmt->fetchColumn();
+
+        if ($stored !== false && (float) $stored > 0) {
+            return round((float) $stored, 2);
+        }
+    } catch (Throwable $e) {
+        error_log('withdrawal_stored_inr failed: ' . $e->getMessage());
+    }
+
+    return t_to_inr($amountT);
+}
+
+/**
  * Forward a withdrawal to the configured payout API and record the outcome.
  *
  * Runs after the withdrawal row has been committed so a slow payout endpoint
@@ -584,6 +618,12 @@ function withdrawal_api_payout(float $amountT, string $upiId, string $txid = '',
  *               so a failed payout keeps the `completed` status and records
  *               the reason in `admin_note` for follow-up.
  *
+ * `$amountT` is the T-coin amount stored on the withdrawal row. The rupee value
+ * sent to the payout API is the `amount_inr` frozen on the row when the user
+ * requested it, so a later change to `coin_to_inr_rate` cannot alter what an
+ * already-requested withdrawal pays out. `t_to_inr()` is only a fallback for
+ * rows that predate that column being populated.
+ *
  * @return array{status: string, message: string, ok: bool, transaction_id: ?string, error: ?string}
  */
 function process_withdrawal_payout(
@@ -594,6 +634,7 @@ function process_withdrawal_payout(
     ?int $adminId = null
 ): array {
     $isManual = $mode === 'manual';
+    $amountInr = withdrawal_stored_inr($withdrawalId, $amountT);
     $label    = $isManual ? 'Withdrawal #' . $withdrawalId : 'Your first withdrawal of ' . t_format($amountT);
 
     if (withdrawal_api_url() === '') {
@@ -609,7 +650,7 @@ function process_withdrawal_payout(
         ];
     }
 
-    $result = withdrawal_api_payout($amountT, $upiId, 'WD' . $withdrawalId);
+    $result = withdrawal_api_payout($amountInr, $upiId, 'WD' . $withdrawalId);
     $pdo    = db();
 
     try {
@@ -689,7 +730,8 @@ function process_withdrawal_payout(
             ':entity_type' => 'withdrawal',
             ':entity_id'   => $withdrawalId,
             ':meta'        => json_encode([
-                'amount'         => $amountT,
+                'amount_t'       => $amountT,
+                'amount_inr'     => $amountInr,
                 'transaction_id' => $result['transaction_id'],
                 'error'          => $result['error'],
             ]),

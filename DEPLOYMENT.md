@@ -289,8 +289,13 @@ treatment on their next try.
 `withdrawal_api_url` receives a `POST` with a JSON body:
 
 ```json
-{ "amt": 2000, "upi": "user@okaxis", "txid": "WD42" }
+{ "amt": 200.00, "upi": "user@okaxis", "txid": "WD42" }
 ```
+
+`amt` is the **rupee** value, not the T-coin amount. The withdrawal row stores
+T coins, so the amount is converted with `coin_to_inr_rate` before the call:
+2,000 T at the default rate of `0.10` is sent as `200.00`. It is always
+formatted to two decimals.
 
 The same values are substituted into the URL if it contains `{amt}`, `{upi}` or
 `{txid}` placeholders.

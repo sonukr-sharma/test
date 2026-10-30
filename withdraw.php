@@ -168,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $payout = process_first_withdrawal_payout($withdrawalId, $amount, $formUpi);
                 flash_set('success', $payout['message']);
             } else {
-                flash_set('success', 'Withdrawal request of ' . t_format($amount) . ' submitted. It will be processed within ' . $processingHours . ' hours.');
+                flash_set('success', 'Withdrawal request of ' . t_format($amount) . ' (' . inr_format(t_to_inr($amount)) . ') submitted. It will be processed within ' . $processingHours . ' hours.');
             }
 
             redirect('withdraw.php');
@@ -370,6 +370,9 @@ try {
                 Min <?= e(t_format($minWithdrawalT)) ?> &middot; Max <?= e(t_format($maxWithdrawalT)) ?> &middot; Balance <?= e(t_format($balanceT)) ?>
               <?php endif; ?>
             </div>
+            <div class="text-[10px] font-semibold text-[#5925dc] mt-1" id="amountInrHint">
+              You will receive <?= e(inr_format(t_to_inr($formAmount))) ?>
+            </div>
           </div>
 
           <!-- Quick Amount Chips: minimum, two random values, maximum -->
@@ -429,6 +432,7 @@ try {
               <div class="<?= e($rowClass) ?> flex items-center justify-between">
                 <div class="min-w-0">
                   <div class="text-xs font-extrabold text-slate-900"><?= e(t_format((float) $row['amount_t'])) ?></div>
+                  <div class="text-[11px] font-semibold text-[#5925dc] mt-0.5"><?= e(inr_format((float) $row['amount_inr'])) ?></div>
                   <div class="text-[11px] font-medium text-slate-500 mt-0.5 truncate"><?= e((string) $row['upi_id']) ?></div>
                   <div class="text-[10px] font-medium text-slate-400 mt-0.5"><?= e(activity_time($row['requested_at'] ?? null)) ?></div>
                 </div>
@@ -494,6 +498,7 @@ try {
         const MAX_WITHDRAW = <?= (int) $effectiveMaxT ?>;
         const IS_FIRST     = <?= $isFirstWithdrawal ? 'true' : 'false' ?>;
         const BALANCE_T    = <?= (float) $balanceT ?>;
+        const COIN_RATE    = <?= (float) setting('coin_to_inr_rate', 0.10) ?>;
 
         let toastTimeout;
 
@@ -525,6 +530,15 @@ try {
             chip.classList.toggle('bg-[#f2eeff]', !isActive);
             chip.classList.toggle('text-[#5925dc]', !isActive);
           });
+
+          const hint = document.getElementById('amountInrHint');
+          if (hint) {
+            const inr = (parseInt(value, 10) || 0) * COIN_RATE;
+            hint.textContent = 'You will receive ₹ ' + inr.toLocaleString('en-IN', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            });
+          }
         }
 
         document.querySelectorAll('.amount-chip').forEach(function (chip) {
