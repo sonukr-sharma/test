@@ -5,6 +5,8 @@ require_once __DIR__ . '/config.php';
 
 $user = require_onboarded_user();
 
+$flash = flash_get();
+
 $leaderboard = [];
 $myRank      = null;
 
@@ -404,19 +406,27 @@ function lb_initials(?array $row): string
   <script>
     let toastTimeout;
 
-    function showToast(message) {
+    function showToast(message, isError) {
       const toast = document.getElementById('toast');
       const toastMsg = document.getElementById('toastMsg');
+      const icon = toast.querySelector('i');
       toastMsg.textContent = message;
+      icon.className = isError ? 'fa-solid fa-circle-exclamation text-rose-400' : 'fa-solid fa-circle-check text-emerald-400';
 
-          toast.classList.remove('opacity-0', 'translate-y-3');
+      toast.classList.remove('opacity-0', 'translate-y-3');
       toast.classList.add('opacity-100', 'translate-y-0');
 
       clearTimeout(toastTimeout);
       toastTimeout = setTimeout(() => {
         toast.classList.remove('opacity-100', 'translate-y-0');
-            toast.classList.add('opacity-0', 'translate-y-3');
+        toast.classList.add('opacity-0', 'translate-y-3');
       }, 2000);
+    }
+
+    const serverFlash = <?= json_encode($flash, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+    if (serverFlash && serverFlash.message) {
+      showToast(serverFlash.message, serverFlash.type === 'error');
     }
 
     if (window.Telegram && window.Telegram.WebApp) {

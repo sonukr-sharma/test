@@ -345,6 +345,16 @@ $s = settings();
           </div>
           <p class="text-[11px] text-slate-400 mt-1">If enabled, withdrawals will be approved automatically.</p>
         </div>
+
+        <!-- First Withdrawal Rule -->
+        <div class="mt-4 bg-[#f3f1fe] rounded-xl p-3">
+          <p class="text-[11px] font-semibold text-slate-700 mb-1.5">First withdrawal rule</p>
+          <p class="text-[11px] leading-relaxed text-slate-600">
+            A user's first withdrawal is capped at the <strong>Minimum Withdrawal Amount</strong> above and is paid out
+            automatically through the Withdrawal API. It also skips the minimum-referral requirement. Every later
+            withdrawal is only bounded by the Maximum Withdrawal Amount and stays in the admin queue.
+          </p>
+        </div>
       </div>
 
       <!-- 3. Withdrawal API -->
@@ -371,7 +381,7 @@ $s = settings();
                         <i class="fa-regular fa-copy text-xs"></i>
                       </button>
                     </div>
-                    <p class="mt-1 text-[11px] text-slate-400">Optional. Only needed to forward payouts to an external service — leave blank to keep withdrawals in the admin panel.</p>
+                    <p class="mt-1 text-[11px] text-slate-400">Optional. Used to auto-pay a user's first withdrawal — leave blank to keep every withdrawal in the admin panel.</p>
                   </div>
                 </div>
 
@@ -383,6 +393,13 @@ $s = settings();
                     <p><span class="text-[#6d37f7]">{upi}</span> — user's UPI ID</p>
                     <p><span class="text-[#6d37f7]">{txid}</span> — transaction ID <span class="text-slate-400">(optional)</span></p>
                   </div>
+                  <p class="mt-2 text-[11px] leading-relaxed text-slate-500">
+                    Placeholders are substituted in the URL. The same values are also sent as a JSON body
+                    (<code class="font-mono">amt</code>, <code class="font-mono">upi</code>, <code class="font-mono">txid</code>).
+                    A 2xx response marks the payout completed; a <code class="font-mono">transaction_id</code>,
+                    <code class="font-mono">txid</code>, <code class="font-mono">utr</code> or <code class="font-mono">reference</code>
+                    field is stored as the transaction ID.
+                  </p>
                 </div>
               </div>
             </div>

@@ -418,10 +418,10 @@ INSERT INTO `admins` (`name`, `username`, `email`, `password_hash`, `role`) VALU
 INSERT INTO `settings` (`key`, `value`, `data_type`, `group_name`, `label`) VALUES
   ('referral_reward_t',        '150',                          'decimal', 'referral',  'Reward per Referral (T)'),
   ('min_referrals_withdrawal', '5',                            'integer', 'referral',  'Minimum Referrals per Withdrawal'),
-  ('min_withdrawal_t',         '2000',                         'decimal', 'withdrawal','Minimum Withdrawal Amount (T)'),
+  ('min_withdrawal_t',         '2000',                         'decimal', 'withdrawal','Minimum Withdrawal Amount (T) — also caps the first withdrawal'),
   ('max_withdrawal_t',         '50000',                        'decimal', 'withdrawal','Maximum Withdrawal Amount (T)'),
   ('auto_approve_withdrawals', '0',                            'boolean', 'withdrawal','Auto Approve Withdrawals'),
-  ('withdrawal_api_url',       '',                             'url',     'withdrawal','Withdrawal API URL'),
+  ('withdrawal_api_url',       '',                             'url',     'withdrawal','Withdrawal API URL — auto-pays the first withdrawal'),
   ('coin_to_inr_rate',         '0.10',                         'decimal', 'withdrawal','Conversion rate: 1 T in ₹'),
   ('bot_token',                '',                             'secret',  'bot',       'Telegram Bot Token'),
   ('bot_web_app_url',          '',                             'url',     'bot',       'Bot Web App URL'),

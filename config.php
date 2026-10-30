@@ -401,16 +401,292 @@ function web_app_url(): string
 /**
  * The endpoint withdrawals are forwarded to, or '' when not configured.
  *
- * This is an *external* integration hook: nothing in this app calls it, so a
- * blank value simply means "no payout service wired up yet". It is never
- * derived from the current domain, because pointing it at this site would
- * imply an endpoint that does not exist.
+ * This is an *external* integration hook: a blank value simply means "no
+ * payout service wired up yet". It is never derived from the current domain,
+ * because pointing it at this site would imply an endpoint that does not
+ * exist.
  */
 function withdrawal_api_url(): string
 {
     $stored = trim((string) setting('withdrawal_api_url', ''));
 
     return preg_match('#^https?://#i', $stored) === 1 ? $stored : '';
+}
+
+/**
+ * How many withdrawals a user has already requested.
+ *
+ * Cancelled and rejected requests are ignored: neither ever paid out, so they
+ * must not consume the user's one-time first-withdrawal allowance.
+ */
+function user_withdrawal_count(int $userId): int
+{
+    try {
+        $stmt = db()->prepare(
+            "SELECT COUNT(*) FROM `withdrawals`
+              WHERE `user_id` = :uid AND `status` NOT IN ('cancelled', 'rejected')"
+        );
+        $stmt->execute([':uid' => $userId]);
+
+        return (int) $stmt->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('user_withdrawal_count failed: ' . $e->getMessage());
+
+        return 0;
+    }
+}
+
+/**
+ * True when the user has never requested a withdrawal.
+ */
+function is_first_withdrawal(int $userId): bool
+{
+    return user_withdrawal_count($userId) === 0;
+}
+
+/**
+ * The cap applied to a user's first withdrawal.
+ *
+ * The first payout is deliberately small: it is limited to the configured
+ * minimum withdrawal amount, so a brand-new account can cash out once without
+ * the platform risking a large payout on an unproven account. Every later
+ * withdrawal is only bounded by `max_withdrawal_t`.
+ */
+function first_withdrawal_max_t(): float
+{
+    return (float) setting('min_withdrawal_t', 2000);
+}
+
+/**
+ * Forward a payout to the configured withdrawal API.
+ *
+ * The endpoint may contain `{amt}`, `{upi}` and `{txid}` placeholders; they are
+ * substituted before the request. The same values are also sent as a JSON body
+ * so an endpoint that reads the payload instead of the query string works too.
+ *
+ * @return array{ok: bool, transaction_id: ?string, response: mixed, error: ?string}
+ */
+function withdrawal_api_payout(float $amountT, string $upiId, string $txid = '', int $timeout = 20): array
+{
+    $endpoint = withdrawal_api_url();
+
+    if ($endpoint === '') {
+        return [
+            'ok'             => false,
+            'transaction_id' => null,
+            'response'       => null,
+            'error'          => 'Withdrawal API is not configured.',
+        ];
+    }
+
+    $url = strtr($endpoint, [
+        '{amt}'  => (string) $amountT,
+        '{upi}'  => $upiId,
+        '{txid}' => $txid,
+    ]);
+
+    $payload = json_encode([
+        'amt'  => $amountT,
+        'upi'  => $upiId,
+        'txid' => $txid,
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $payload,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Accept: application/json'],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => $timeout,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+    ]);
+
+    $body   = curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    $errNo  = curl_errno($ch);
+    $error  = curl_error($ch);
+    curl_close($ch);
+
+    if ($body === false || $errNo !== 0) {
+        return [
+            'ok'             => false,
+            'transaction_id' => null,
+            'response'       => null,
+            'error'          => 'cURL error: ' . ($error !== '' ? $error : (string) $errNo),
+        ];
+    }
+
+    $decoded  = json_decode((string) $body, true);
+    $response = is_array($decoded) ? $decoded : ['raw' => substr((string) $body, 0, 1000)];
+
+    $ok     = $status >= 200 && $status < 300;
+    $reason = null;
+
+    // An endpoint can answer 200 and still report a failed payout.
+    if ($ok && is_array($decoded)) {
+        if (array_key_exists('success', $decoded) && $decoded['success'] === false) {
+            $ok     = false;
+            $reason = 'API reported success=false';
+        }
+
+        $state = strtolower((string) ($decoded['status'] ?? ''));
+
+        if (in_array($state, ['failed', 'failure', 'error', 'rejected', 'declined'], true)) {
+            $ok     = false;
+            $reason = 'API reported status=' . $state;
+        }
+
+        if (!$ok) {
+            foreach (['message', 'error', 'reason', 'detail'] as $key) {
+                if (isset($decoded[$key]) && is_scalar($decoded[$key]) && (string) $decoded[$key] !== '') {
+                    $reason .= ': ' . (string) $decoded[$key];
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!$ok && $reason === null) {
+        $reason = 'Payout API returned HTTP ' . $status;
+    }
+
+    $transactionId = null;
+
+    if (is_array($decoded)) {
+        foreach (['transaction_id', 'txid', 'txn_id', 'utr', 'reference', 'reference_id', 'id'] as $key) {
+            if (isset($decoded[$key]) && is_scalar($decoded[$key]) && (string) $decoded[$key] !== '') {
+                $transactionId = (string) $decoded[$key];
+                break;
+            }
+        }
+    }
+
+    return [
+        'ok'             => $ok,
+        'transaction_id' => $transactionId,
+        'response'       => $response,
+        'error'          => $reason,
+    ];
+}
+
+/**
+ * Pay out a first withdrawal immediately through the configured API.
+ *
+ * Runs after the request has been committed so a slow payout endpoint never
+ * holds the wallet row lock. On success the withdrawal is marked completed;
+ * on failure it stays pending for the admin queue and the API answer is kept
+ * for debugging.
+ *
+ * @return array{status: string, message: string}
+ */
+function process_first_withdrawal_payout(int $withdrawalId, float $amountT, string $upiId): array
+{
+    if (withdrawal_api_url() === '') {
+        return [
+            'status'  => 'pending',
+            'message' => 'Your first withdrawal of ' . t_format($amountT) . ' is queued for review.',
+        ];
+    }
+
+    $result = withdrawal_api_payout($amountT, $upiId, 'WD' . $withdrawalId);
+    $pdo    = db();
+
+    try {
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare('SELECT `status` FROM `withdrawals` WHERE `id` = :id FOR UPDATE');
+        $stmt->execute([':id' => $withdrawalId]);
+        $current = $stmt->fetchColumn();
+
+        if ($current === false || $current !== 'pending') {
+            $pdo->rollBack();
+
+            return [
+                'status'  => (string) $current,
+                'message' => 'Your first withdrawal of ' . t_format($amountT) . ' is already being processed.',
+            ];
+        }
+
+        $newStatus = $result['ok'] ? 'completed' : 'pending';
+
+        $update = $pdo->prepare(
+            'UPDATE `withdrawals`
+                SET `status` = :status,
+                    `transaction_id` = :txid,
+                    `api_response` = :response,
+                    `admin_note` = :note,
+                    `processed_at` = :processed
+              WHERE `id` = :id'
+        );
+        $update->execute([
+            ':status'    => $newStatus,
+            ':txid'      => $result['transaction_id'],
+            ':response'  => json_encode($result['response'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            ':note'      => $result['ok'] ? null : mb_substr('Auto-payout failed: ' . (string) $result['error'], 0, 500),
+            ':processed' => $result['ok'] ? date('Y-m-d H:i:s') : null,
+            ':id'        => $withdrawalId,
+        ]);
+
+        if ($result['ok']) {
+            $history = $pdo->prepare(
+                'INSERT INTO `withdrawal_status_history`
+                     (`withdrawal_id`, `from_status`, `to_status`, `note`, `admin_id`)
+                 VALUES (:wid, :from, :to, :note, NULL)'
+            );
+            $history->execute([
+                ':wid'  => $withdrawalId,
+                ':from' => 'pending',
+                ':to'   => 'completed',
+                ':note' => 'Auto-paid via withdrawal API'
+                    . ($result['transaction_id'] !== null ? ' (txid ' . $result['transaction_id'] . ')' : ''),
+            ]);
+        }
+
+        $audit = $pdo->prepare(
+            'INSERT INTO `audit_logs` (`admin_id`, `action`, `entity_type`, `entity_id`, `meta`, `ip_address`)
+             VALUES (NULL, :action, :entity_type, :entity_id, :meta, :ip)'
+        );
+        $audit->execute([
+            ':action'      => $result['ok'] ? 'withdrawal.auto_payout' : 'withdrawal.auto_payout_failed',
+            ':entity_type' => 'withdrawal',
+            ':entity_id'   => $withdrawalId,
+            ':meta'        => json_encode([
+                'amount'         => $amountT,
+                'transaction_id' => $result['transaction_id'],
+                'error'          => $result['error'],
+            ]),
+            ':ip'          => $_SERVER['REMOTE_ADDR'] ?? null,
+        ]);
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        error_log('process_first_withdrawal_payout failed: ' . $e->getMessage());
+
+        return [
+            'status'  => 'pending',
+            'message' => 'Your first withdrawal of ' . t_format($amountT) . ' is queued for review.',
+        ];
+    }
+
+    if ($result['ok']) {
+        return [
+            'status'  => 'completed',
+            'message' => 'Your first withdrawal of ' . t_format($amountT) . ' was paid out automatically.',
+        ];
+    }
+
+    error_log('First withdrawal #' . $withdrawalId . ' auto-payout failed: ' . (string) $result['error']);
+
+    return [
+        'status'  => 'pending',
+        'message' => 'Your first withdrawal of ' . t_format($amountT) . ' is queued for review.',
+    ];
 }
 
 /* ---------------------------------------------------------------------

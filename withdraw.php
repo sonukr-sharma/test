@@ -13,6 +13,14 @@ $processingHours    = (int) setting('withdrawal_processing_hours', 24);
 $balanceT           = (float) $user['balance_t'];
 $referralCount      = (int) $user['referral_count'];
 
+// The first payout is capped at the minimum amount and paid out automatically;
+// later ones are only bounded by max_withdrawal_t.
+$isFirstWithdrawal  = is_first_withdrawal((int) $user['id']);
+$firstWithdrawalMax = first_withdrawal_max_t();
+$effectiveMinT      = $isFirstWithdrawal ? 1.0 : $minWithdrawalT;
+$effectiveMaxT      = $isFirstWithdrawal ? $firstWithdrawalMax : $maxWithdrawalT;
+$referralsRequired  = $isFirstWithdrawal ? 0 : $minReferrals;
+
 $formError = null;
 $formUpi   = '';
 
@@ -24,14 +32,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $formError = 'Your session expired. Please try again.';
     } elseif (!$withdrawalsEnabled) {
         $formError = 'Withdrawals are temporarily disabled.';
-    } elseif ($referralCount < $minReferrals) {
-        $formError = sprintf('You need at least %d referrals to withdraw.', $minReferrals);
+    } elseif ($referralCount < $referralsRequired) {
+        $formError = sprintf('You need at least %d referrals to withdraw.', $referralsRequired);
     } elseif (preg_match('/^[\w.\-]{2,}@[a-zA-Z]{2,}$/', $formUpi) !== 1) {
         $formError = 'Please enter a valid UPI ID (e.g. yourname@upi).';
-    } elseif ($amount < $minWithdrawalT) {
+    } elseif ($amount <= 0) {
+        $formError = 'Please enter the amount you want to withdraw.';
+    } elseif ($isFirstWithdrawal && $amount > $firstWithdrawalMax) {
+        $formError = 'Your first withdrawal is limited to ' . t_format($firstWithdrawalMax) . '.';
+    } elseif (!$isFirstWithdrawal && $amount < $minWithdrawalT) {
         $formError = 'Minimum withdrawal is ' . t_format($minWithdrawalT) . '.';
-    } elseif ($amount > $maxWithdrawalT) {
-        $formError = 'Maximum withdrawal is ' . t_format($maxWithdrawalT) . '.';
+    } elseif ($amount > $effectiveMaxT) {
+        $formError = 'Maximum withdrawal is ' . t_format($effectiveMaxT) . '.';
     } elseif ($amount > $balanceT) {
         $formError = 'Insufficient balance. You have ' . t_format($balanceT) . '.';
     } else {
@@ -46,6 +58,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($amount > $lockedBalance) {
                 throw new RuntimeException('Insufficient balance.');
+            }
+
+            // Re-check under the row lock so two concurrent submissions cannot
+            // both claim the first-withdrawal allowance.
+            $stmt = $pdo->prepare(
+                "SELECT COUNT(*) FROM `withdrawals`
+                  WHERE `user_id` = :uid AND `status` NOT IN ('cancelled', 'rejected')"
+            );
+            $stmt->execute([':uid' => $user['id']]);
+            $lockedIsFirst = (int) $stmt->fetchColumn() === 0;
+
+            if ($lockedIsFirst && $amount > $firstWithdrawalMax) {
+                throw new RuntimeException('Your first withdrawal is limited to ' . t_format($firstWithdrawalMax) . '.');
             }
 
             $stmt = $pdo->prepare(
@@ -72,7 +97,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([
                 ':wid'  => $withdrawalId,
                 ':to'   => 'pending',
-                ':note' => 'Requested by user via mini app.',
+                ':note' => $lockedIsFirst
+                    ? 'First withdrawal requested by user via mini app (auto-payout).'
+                    : 'Requested by user via mini app.',
             ]);
 
             credit_wallet(
@@ -87,7 +114,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
-            flash_set('success', 'Withdrawal request of ' . t_format($amount) . ' submitted. It will be processed within ' . $processingHours . ' hours.');
+            // The payout call happens after the commit so a slow endpoint never
+            // holds the wallet row lock.
+            if ($lockedIsFirst) {
+                $payout = process_first_withdrawal_payout($withdrawalId, $amount, $formUpi);
+                flash_set('success', $payout['message']);
+            } else {
+                flash_set('success', 'Withdrawal request of ' . t_format($amount) . ' submitted. It will be processed within ' . $processingHours . ' hours.');
+            }
+
             redirect('withdraw.php');
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -220,7 +255,11 @@ try {
         <div class="mt-4 bg-[#f5f3ff] rounded-xl px-3 py-2.5 flex items-center justify-between text-xs">
           <div class="flex items-center gap-1.5">
             <i class="fa-solid fa-crown text-amber-400 text-sm"></i>
-            <span class="text-slate-600 font-medium">Minimum cashout: <strong class="text-[#5925dc] font-bold"><?= e(t_format($minWithdrawalT)) ?> (<?= e(inr_format(t_to_inr($minWithdrawalT))) ?>)</strong></span>
+            <?php if ($isFirstWithdrawal): ?>
+              <span class="text-slate-600 font-medium">First withdrawal limit: <strong class="text-[#5925dc] font-bold"><?= e(t_format($firstWithdrawalMax)) ?> (<?= e(inr_format(t_to_inr($firstWithdrawalMax))) ?>)</strong></span>
+            <?php else: ?>
+              <span class="text-slate-600 font-medium">Minimum cashout: <strong class="text-[#5925dc] font-bold"><?= e(t_format($minWithdrawalT)) ?> (<?= e(inr_format(t_to_inr($minWithdrawalT))) ?>)</strong></span>
+            <?php endif; ?>
           </div>
         </div>
       </div>
@@ -228,12 +267,6 @@ try {
       <!-- Withdraw Amount Card -->
       <div class="bg-white rounded-3xl p-4 card-shadow">
         <h3 class="font-extrabold text-sm text-slate-900 mb-3">Withdraw Amount</h3>
-
-        <?php if ($flash !== null): ?>
-          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold <?= $flash['type'] === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200' ?>">
-            <?= e($flash['message']) ?>
-          </div>
-        <?php endif; ?>
 
         <?php if ($formError !== null): ?>
           <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
@@ -245,9 +278,13 @@ try {
           <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
             Withdrawals are temporarily disabled. Please check back later.
           </div>
-        <?php elseif ($referralCount < $minReferrals): ?>
+        <?php elseif ($referralCount < $referralsRequired): ?>
           <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-            You need at least <?= e((string) $minReferrals) ?> referrals to withdraw. You currently have <?= e((string) $referralCount) ?>.
+            You need at least <?= e((string) $referralsRequired) ?> referrals to withdraw. You currently have <?= e((string) $referralCount) ?>.
+          </div>
+        <?php elseif ($isFirstWithdrawal): ?>
+          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            This is your first withdrawal. It is limited to <?= e(t_format($firstWithdrawalMax)) ?> and is paid out automatically.
           </div>
         <?php endif; ?>
 
@@ -268,21 +305,32 @@ try {
           <div class="mb-3">
             <label class="text-xs font-bold text-slate-600 mb-1.5 block" for="withdrawAmount">Amount</label>
             <div class="bg-[#f4f4f8] rounded-2xl px-3.5 py-3 flex items-center justify-between border border-slate-200/80">
-              <input type="number" id="withdrawAmount" name="amount" min="<?= e((string) (int) $minWithdrawalT) ?>" max="<?= e((string) (int) $maxWithdrawalT) ?>" step="1"
+              <input type="number" id="withdrawAmount" name="amount" min="<?= e((string) (int) $effectiveMinT) ?>" max="<?= e((string) (int) $effectiveMaxT) ?>" step="1"
                      placeholder="Enter amount (T)" class="bg-transparent text-sm font-semibold text-slate-800 w-full outline-none" />
               <span class="text-xs font-bold text-[#5925dc] whitespace-nowrap ml-2">T</span>
             </div>
             <div class="text-[10px] font-medium text-slate-400 mt-1.5">
-              Min <?= e(t_format($minWithdrawalT)) ?> &middot; Max <?= e(t_format($maxWithdrawalT)) ?> &middot; Balance <?= e(t_format($balanceT)) ?>
+              <?php if ($isFirstWithdrawal): ?>
+                Max <?= e(t_format($firstWithdrawalMax)) ?> &middot; Balance <?= e(t_format($balanceT)) ?>
+              <?php else: ?>
+                Min <?= e(t_format($minWithdrawalT)) ?> &middot; Max <?= e(t_format($maxWithdrawalT)) ?> &middot; Balance <?= e(t_format($balanceT)) ?>
+              <?php endif; ?>
             </div>
           </div>
 
           <!-- Quick Amount Chips -->
           <div class="grid grid-cols-4 gap-2 mt-3">
-            <button type="button" onclick="setAmount(<?= e((string) (int) $minWithdrawalT) ?>)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition"><?= e(t_format($minWithdrawalT, false)) ?></button>
-            <button type="button" onclick="setAmount(5000)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition">5,000</button>
-            <button type="button" onclick="setAmount(10000)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition">10,000</button>
-            <button type="button" onclick="setAmount(20000)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition">20,000</button>
+            <?php if ($isFirstWithdrawal): ?>
+              <?php foreach ([0.25, 0.5, 0.75, 1] as $fraction): ?>
+                <?php $chip = max(1, (int) round($firstWithdrawalMax * $fraction)); ?>
+                <button type="button" onclick="setAmount(<?= e((string) $chip) ?>)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition"><?= e(t_format($chip, false)) ?></button>
+              <?php endforeach; ?>
+            <?php else: ?>
+              <button type="button" onclick="setAmount(<?= e((string) (int) $minWithdrawalT) ?>)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition"><?= e(t_format($minWithdrawalT, false)) ?></button>
+              <button type="button" onclick="setAmount(5000)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition">5,000</button>
+              <button type="button" onclick="setAmount(10000)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition">10,000</button>
+              <button type="button" onclick="setAmount(20000)" class="bg-[#f2eeff] text-[#5925dc] text-xs font-bold py-2 rounded-xl active:scale-95 transition">20,000</button>
+            <?php endif; ?>
           </div>
 
           <!-- Withdraw Button -->
@@ -379,8 +427,9 @@ try {
 
   <!-- Withdraw Script -->
   <script>
-        const MIN_WITHDRAW = <?= (int) $minWithdrawalT ?>;
-        const MAX_WITHDRAW = <?= (int) $maxWithdrawalT ?>;
+        const MIN_WITHDRAW = <?= (int) $effectiveMinT ?>;
+        const MAX_WITHDRAW = <?= (int) $effectiveMaxT ?>;
+        const IS_FIRST     = <?= $isFirstWithdrawal ? 'true' : 'false' ?>;
         const BALANCE_T    = <?= (float) $balanceT ?>;
 
         let toastTimeout;
@@ -422,12 +471,16 @@ try {
           }
           if (!amount || amount < MIN_WITHDRAW) {
             event.preventDefault();
-            showToast('Minimum withdrawal is ' + MIN_WITHDRAW.toLocaleString() + ' T', true);
+            showToast(IS_FIRST
+              ? 'Please enter an amount between 1 and ' + MAX_WITHDRAW.toLocaleString() + ' T'
+              : 'Minimum withdrawal is ' + MIN_WITHDRAW.toLocaleString() + ' T', true);
             return;
           }
           if (amount > MAX_WITHDRAW) {
             event.preventDefault();
-            showToast('Maximum withdrawal is ' + MAX_WITHDRAW.toLocaleString() + ' T', true);
+            showToast(IS_FIRST
+              ? 'Your first withdrawal is limited to ' + MAX_WITHDRAW.toLocaleString() + ' T'
+              : 'Maximum withdrawal is ' + MAX_WITHDRAW.toLocaleString() + ' T', true);
             return;
           }
           if (amount > BALANCE_T) {
@@ -447,6 +500,12 @@ try {
           tg.ready();
           tg.expand();
           tg.setHeaderColor('#5925dc');
+        }
+
+        const serverFlash = <?= json_encode($flash, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+        if (serverFlash && serverFlash.message) {
+          showToast(serverFlash.message, serverFlash.type !== 'success');
         }
     </script>
 </body>

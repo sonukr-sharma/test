@@ -26,6 +26,8 @@ try {
 } catch (Throwable $e) {
     error_log('index.php recent activity failed: ' . $e->getMessage());
 }
+
+$flash = flash_get();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -81,15 +83,6 @@ try {
       <i class="fa-solid fa-circle-check text-emerald-400"></i>
       <span id="toastMsg">Notification</span>
     </div>
-
-    <!-- Flash message -->
-    <?php $flash = flash_get(); ?>
-    <?php if ($flash !== null): ?>
-      <div class="mx-4 mt-3 rounded-2xl px-4 py-3 text-xs font-bold flex items-start gap-2.5 <?= $flash['type'] === 'error' ? 'bg-rose-50 border border-rose-200 text-rose-800' : 'bg-emerald-50 border border-emerald-200 text-emerald-800' ?>">
-        <i class="fa-solid <?= $flash['type'] === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check' ?> mt-0.5"></i>
-        <span><?= e($flash['message']) ?></span>
-      </div>
-    <?php endif; ?>
 
     <!-- Top Purple Header Background -->
     <div class="header-bg pt-5 pb-20 px-4">
@@ -376,10 +369,12 @@ try {
   <script>
       let toastTimeout;
 
-      function showToast(message) {
+      function showToast(message, isError) {
         const toast = document.getElementById('toast');
         const toastMsg = document.getElementById('toastMsg');
+        const icon = toast.querySelector('i');
         toastMsg.textContent = message;
+        icon.className = isError ? 'fa-solid fa-circle-exclamation text-rose-400' : 'fa-solid fa-circle-check text-emerald-400';
 
         toast.classList.remove('opacity-0', 'translate-y-3');
         toast.classList.add('opacity-100', 'translate-y-0');
@@ -389,6 +384,12 @@ try {
           toast.classList.remove('opacity-100', 'translate-y-0');
           toast.classList.add('opacity-0', 'translate-y-3');
         }, 2000);
+      }
+
+      const serverFlash = <?= json_encode($flash, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+      if (serverFlash && serverFlash.message) {
+        showToast(serverFlash.message, serverFlash.type === 'error');
       }
 
       function copyInviteLink() {

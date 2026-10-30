@@ -150,7 +150,7 @@ Open these in a browser:
 | `https://yourdomain.com/config.php` | **403 Forbidden** |
 
 If `.env` or `schema.sql` returns content, your host is ignoring `.htaccess`
-(nginx does). See [§9 nginx](#9-if-you-are-on-nginx) below.
+(nginx does). See [§10 nginx](#10-if-you-are-on-nginx) below.
 
 ---
 
@@ -200,9 +200,9 @@ the user from that session value.
 If `bot_token` is blank or wrong, the signature check fails and the app falls
 back to the "Open inside Telegram" screen — that is the symptom to look for.
 
-The same applies to `withdrawal_api_url`: it is an optional external payout hook
-and nothing in this app calls it. Leave it blank unless you are forwarding
-withdrawals to your own payout service.
+The same applies to `withdrawal_api_url`: it is an optional external payout hook.
+Leave it blank unless you are forwarding payouts to your own payout service — see
+[First withdrawal rule](#first-withdrawal-rule) below.
 
 Generate a secret:
 
@@ -266,7 +266,52 @@ Test with a fresh Telegram account before announcing the app.
 
 ---
 
-## 9. If you are on nginx
+## 9. First withdrawal rule
+
+A user's **first** withdrawal is treated differently from every later one:
+
+| | First withdrawal | Later withdrawals |
+|---|---|---|
+| Cap | `min_withdrawal_t` (default 2,000 T) | `max_withdrawal_t` (default 50,000 T) |
+| Minimum | none — any amount from 1 T up to the cap | `min_withdrawal_t` |
+| Referral requirement | skipped | `min_referrals_withdrawal` |
+| Payout | sent to `withdrawal_api_url` immediately | stays `pending` for the admin queue |
+
+The cap is deliberately tied to `min_withdrawal_t` so there is a single number
+to tune: raising the minimum also raises the first-withdrawal ceiling.
+
+A request only counts as "used" once it is neither `cancelled` nor `rejected`,
+so a user whose first attempt was rejected still gets the first-withdrawal
+treatment on their next try.
+
+### Payout API contract
+
+`withdrawal_api_url` receives a `POST` with a JSON body:
+
+```json
+{ "amt": 2000, "upi": "user@okaxis", "txid": "WD42" }
+```
+
+The same values are substituted into the URL if it contains `{amt}`, `{upi}` or
+`{txid}` placeholders.
+
+A **2xx** response marks the withdrawal `completed`. The transaction ID is read
+from the first of `transaction_id`, `txid`, `txn_id`, `utr`, `reference`,
+`reference_id` or `id` present in the response, and the whole response is stored
+in `withdrawals.api_response`.
+
+The payout is treated as **failed** when the response is non-2xx, when it
+contains `"success": false`, or when `status` is one of `failed`, `failure`,
+`error`, `rejected`, `declined`. A failed payout leaves the withdrawal
+`pending` with the reason in `admin_note`, so an admin can approve or reject it
+from **Admin → Withdrawals** as usual. The user's balance is never restored
+automatically — only an explicit rejection refunds it.
+
+Leave `withdrawal_api_url` blank to keep every withdrawal in the admin queue.
+
+---
+
+## 10. If you are on nginx
 
 `.htaccess` is Apache-only. Add the equivalent to your server block:
 
@@ -304,7 +349,7 @@ server {
 
 ---
 
-## 10. Post-launch checklist
+## 11. Post-launch checklist
 
 - [ ] `APP_DEBUG=0` and `APP_ENV=production` in `.env`
 - [ ] `.env` returns **403** in a browser
@@ -321,7 +366,7 @@ server {
 
 ---
 
-## 11. Backups
+## 12. Backups
 
 Nightly `mysqldump` via cron:
 
@@ -335,7 +380,7 @@ financial records — never prune them.
 
 ---
 
-## 12. Updating the site
+## 13. Updating the site
 
 ```bash
 git pull origin main

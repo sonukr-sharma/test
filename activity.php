@@ -5,6 +5,8 @@ require_once __DIR__ . '/config.php';
 
 $user = require_onboarded_user();
 
+$flash = flash_get();
+
 $totalEarnedT  = (float) $user['total_earned_t'];
 $referralCount = (int) $user['referral_count'];
 
@@ -79,6 +81,12 @@ $totalPages = max(1, (int) ceil($totalRows / $perPage));
 
   <!-- Mobile App Container -->
   <div class="w-full max-w-[430px] min-h-screen bg-[#f4f3fa] relative pb-24 overflow-x-hidden shadow-2xl">
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 transition-all duration-300 opacity-0 pointer-events-none translate-y-3">
+      <i class="fa-solid fa-circle-check text-emerald-400"></i>
+      <span id="toastMsg">Notification</span>
+    </div>
 
     <!-- Top Purple Header Background -->
     <div class="header-bg pt-5 pb-20 px-4">
@@ -227,6 +235,31 @@ $totalPages = max(1, (int) ceil($totalRows / $perPage));
   </div>
 
   <script>
+    let toastTimeout;
+
+    function showToast(message, isError) {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMsg');
+      const icon = toast.querySelector('i');
+      toastMsg.textContent = message;
+      icon.className = isError ? 'fa-solid fa-circle-exclamation text-rose-400' : 'fa-solid fa-circle-check text-emerald-400';
+
+      toast.classList.remove('opacity-0', 'translate-y-3');
+      toast.classList.add('opacity-100', 'translate-y-0');
+
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', 'translate-y-3');
+      }, 2000);
+    }
+
+    const serverFlash = <?= json_encode($flash, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+    if (serverFlash && serverFlash.message) {
+      showToast(serverFlash.message, serverFlash.type === 'error');
+    }
+
     if (window.Telegram && window.Telegram.WebApp) {
       const tg = window.Telegram.WebApp;
       tg.ready();
