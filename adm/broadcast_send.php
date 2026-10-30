@@ -22,10 +22,100 @@ if (!csrf_verify($_POST['csrf_token'] ?? null)) {
     redirect('adm/broadcast.php');
 }
 
+/**
+ * Escape text for Telegram's HTML parse mode.
+ */
+function tg_h(string $s): string
+{
+    return htmlspecialchars($s, ENT_NOQUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+/**
+ * Convert one line of the composer's Markdown into Telegram HTML.
+ *
+ * The composer emits `*bold*`, `_italic_`, `__underline__`, `~strike~`,
+ * `||spoiler||`, `` `code` `` and `[text](url)`. Legacy Markdown supports none
+ * of the last four, and MarkdownV2 would require escaping every `.`/`!`/`-`,
+ * so the message is converted to HTML and sent with `parse_mode = 'HTML'`.
+ */
+function tg_inline(string $t): string
+{
+    $t     = tg_h($t);
+    $stash = [];
+
+    $keep = static function (string $html) use (&$stash): string {
+        $key          = "\x01" . count($stash) . "\x02";
+        $stash[$key]  = $html;
+
+        return $key;
+    };
+
+    $t = preg_replace_callback(
+        '/`([^`\n]+)`/',
+        static fn (array $m): string => $keep('<code>' . $m[1] . '</code>'),
+        $t
+    ) ?? $t;
+
+    $t = preg_replace_callback(
+        '/\[([^\]\n]+)\]\(((?:https?|tg):\/\/[^)\s]+)\)/i',
+        static fn (array $m): string => $keep(
+            '<a href="' . str_replace('"', '&quot;', $m[2]) . '">' . $m[1] . '</a>'
+        ),
+        $t
+    ) ?? $t;
+
+    $t = preg_replace('/\|\|(.+?)\|\|/s', '<tg-spoiler>$1</tg-spoiler>', $t) ?? $t;
+    $t = preg_replace('/__(.+?)__/s', '<u>$1</u>', $t) ?? $t;
+    $t = preg_replace('/\*\*(.+?)\*\*/s', '<b>$1</b>', $t) ?? $t;
+    $t = preg_replace('/\*(.+?)\*/s', '<b>$1</b>', $t) ?? $t;
+    $t = preg_replace('/(?<!\w)_(.+?)_(?!\w)/s', '<i>$1</i>', $t) ?? $t;
+    $t = preg_replace('/~(.+?)~/s', '<s>$1</s>', $t) ?? $t;
+
+    return strtr($t, $stash);
+}
+
+/**
+ * Convert the composer's Markdown into Telegram HTML.
+ */
+function tg_markdown_to_html(string $src): string
+{
+    $lines = preg_split('/\r\n|\r|\n/', $src) ?: [];
+    $count = count($lines);
+    $i     = 0;
+    $out   = [];
+
+    while ($i < $count) {
+        if (preg_match('/^\s*```/', $lines[$i])) {
+            $buffer = [];
+            $i++;
+            while ($i < $count && !preg_match('/^\s*```/', $lines[$i])) {
+                $buffer[] = $lines[$i++];
+            }
+            $i++;
+            $out[] = '<pre>' . tg_h(implode("\n", $buffer)) . '</pre>';
+            continue;
+        }
+
+        if (preg_match('/^\s*>/', $lines[$i])) {
+            $buffer = [];
+            while ($i < $count && preg_match('/^\s*>/', $lines[$i])) {
+                $buffer[] = tg_inline((string) preg_replace('/^\s*>\s?/', '', $lines[$i]));
+                $i++;
+            }
+            $out[] = '<blockquote>' . implode("\n", $buffer) . '</blockquote>';
+            continue;
+        }
+
+        $out[] = tg_inline($lines[$i++]);
+    }
+
+    return implode("\n", $out);
+}
+
 /** Collect the posted inline buttons for the active media tab. */
 function collect_posted_buttons(): array
 {
-    $raw = $_POST['buttons'] ?? '[]';
+    $raw     = $_POST['buttons'] ?? '[]';
     $decoded = is_string($raw) ? json_decode($raw, true) : null;
     if (!is_array($decoded)) {
         return [];
@@ -38,13 +128,28 @@ function collect_posted_buttons(): array
         }
         $label = trim((string) ($row['text'] ?? ''));
         $url   = trim((string) ($row['link'] ?? ''));
+
+        if ($label === '' && $url === '') {
+            continue;
+        }
+
+        // A button with text but no link would be silently dropped, leaving the
+        // admin thinking it was sent.
         if ($label === '' || $url === '') {
-            continue;
+            throw new InvalidArgumentException(
+                'Button "' . ($label !== '' ? $label : $url) . '" needs both a label and a link.'
+            );
         }
-        if (!preg_match('~^(https?://|tg://|mailto:)~i', $url)) {
-            continue;
+
+        // Telegram inline URL buttons accept only http(s) and tg:// — a
+        // mailto: link fails the whole message with BUTTON_URL_INVALID.
+        if (!preg_match('~^(https?://|tg://)~i', $url)) {
+            throw new InvalidArgumentException(
+                'Button "' . $label . '" has an unsupported link. Use an http(s):// or tg:// URL.'
+            );
         }
-        $style = (string) ($row['style'] ?? 'primary');
+
+        $style     = (string) ($row['style'] ?? 'primary');
         $buttons[] = [
             'label' => mb_substr($label, 0, 64),
             'url'   => mb_substr($url, 0, 500),
@@ -95,8 +200,24 @@ function store_broadcast_media(string $mediaType): array
         ],
     ];
 
+    // finfo reports legacy Office files as application/CDFV2 and modern ones as
+    // application/zip, so the original extension is a necessary fallback.
+    $extensionMap = [
+        'image' => ['jpg' => 'jpg', 'jpeg' => 'jpg', 'png' => 'png', 'gif' => 'gif', 'webp' => 'webp'],
+        'video' => ['mp4' => 'mp4', 'mov' => 'mov'],
+        'file'  => [
+            'pdf' => 'pdf', 'doc' => 'doc', 'docx' => 'docx',
+            'xls' => 'xls', 'xlsx' => 'xlsx', 'zip' => 'zip',
+        ],
+    ];
+
     $mime = (string) (new finfo(FILEINFO_MIME_TYPE))->file((string) $file['tmp_name']);
     $ext  = $allowed[$mediaType][$mime] ?? null;
+
+    if ($ext === null) {
+        $originalExt = strtolower((string) pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION));
+        $ext         = $extensionMap[$mediaType][$originalExt] ?? null;
+    }
 
     if ($ext === null) {
         return ['path' => null, 'error' => 'That file type is not allowed for a ' . $mediaType . ' broadcast.'];
@@ -119,16 +240,49 @@ $mediaType = in_array($mediaType, ['none', 'image', 'video', 'file'], true) ? $m
 $audience = (string) ($_POST['audience'] ?? 'all');
 $audience = in_array($audience, ['all', 'active', 'inactive', 'custom'], true) ? $audience : 'all';
 
+// When post_max_size is exceeded PHP empties both $_POST and $_FILES, which
+// would otherwise surface as a misleading "session expired" message.
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST'
+    && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0
+    && $_POST === []) {
+    $_SESSION['admin_flash'] = [
+        'type'    => 'error',
+        'message' => 'That upload is larger than the server accepts ('
+            . ini_get('post_max_size') . '). Please use a smaller file.',
+    ];
+    redirect('adm/broadcast.php');
+}
+
 $messageText = trim((string) ($_POST['message_text'] ?? ''));
-$buttons     = collect_posted_buttons();
+
+try {
+    $buttons = collect_posted_buttons();
+} catch (InvalidArgumentException $e) {
+    $_SESSION['admin_flash'] = ['type' => 'error', 'message' => $e->getMessage()];
+    redirect('adm/broadcast.php');
+}
 
 if ($messageText === '' && $buttons === []) {
     $_SESSION['admin_flash'] = ['type' => 'error', 'message' => 'Add a message or at least one button before sending.'];
     redirect('adm/broadcast.php');
 }
 
-if (mb_strlen($messageText) > 4096) {
-    $_SESSION['admin_flash'] = ['type' => 'error', 'message' => 'Message is too long. Telegram allows 4096 characters.'];
+// sendMessage rejects an empty text, so buttons alone cannot carry a text post.
+if ($mediaType === 'none' && $messageText === '') {
+    $_SESSION['admin_flash'] = ['type' => 'error', 'message' => 'Add a message before sending a text broadcast.'];
+    redirect('adm/broadcast.php');
+}
+
+// Telegram caps media captions at 1024 characters, not 4096.
+$textLimit = $mediaType === 'none' ? 4096 : 1024;
+
+if (mb_strlen($messageText) > $textLimit) {
+    $_SESSION['admin_flash'] = [
+        'type'    => 'error',
+        'message' => $mediaType === 'none'
+            ? 'Message is too long. Telegram allows 4096 characters.'
+            : 'Caption is too long. Telegram allows 1024 characters on a ' . $mediaType . ' broadcast.',
+    ];
     redirect('adm/broadcast.php');
 }
 
@@ -162,8 +316,8 @@ try {
     );
     $stmt->execute([
         ':title'        => $title,
-        ':message_text' => $messageText !== '' ? $messageText : null,
-        ':parse_mode'   => 'Markdown',
+        ':message_text' => $messageText !== '' ? tg_markdown_to_html($messageText) : null,
+        ':parse_mode'   => 'HTML',
         ':media_type'   => $mediaType,
         ':media_path'   => $media['path'],
         ':audience'     => $audience,

@@ -735,6 +735,7 @@ Invite your friends and earn 150 T for each successful referral.
                 </div>
               <?php endforeach; ?>
             <?php endif; ?>
+          </div>
           <!-- Pagination Footer -->
           <div class="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
             <p class="text-[11px] text-slate-500">

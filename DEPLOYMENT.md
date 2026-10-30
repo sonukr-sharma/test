@@ -23,14 +23,14 @@ HTTPS site that Telegram can talk to.
 
 ## 1. Create the database
 
-In cPanel Ã¢â€ â€™ **MySQL Databases** (or your DB admin tool):
+In cPanel → **MySQL Databases** (or your DB admin tool):
 
 1. Create a database, e.g. `myuser_refer_earn`.
 2. Create a user with a **strong password** and grant it **ALL** privileges on
    that database only.
 3. Note down: host (`localhost`), database name, user, password.
 
-Then import the schema Ã¢â‚¬â€ either through **phpMyAdmin Ã¢â€ â€™ Import Ã¢â€ â€™ `schema.sql`**,
+Then import the schema — either through **phpMyAdmin → Import → `schema.sql`**,
 or on the command line:
 
 ```bash
@@ -56,37 +56,37 @@ Upload everything **except** these to your web root
 (usually `public_html/`):
 
 ```
-.env.example      Ã¢â€ Â keep locally, or upload then delete
+.env.example      ← keep locally, or upload then delete
 .gitignore
-.htaccess         Ã¢â€ Â DO upload this one
-schema.sql        Ã¢â€ Â upload only if you import via phpMyAdmin, then delete
+.htaccess         ← DO upload this one
+schema.sql        ← upload only if you import via phpMyAdmin, then delete
 ```
 
 Recommended layout:
 
 ```
 public_html/
-Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ .htaccess
-Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ .env                  Ã¢â€ Â created in step 3, never committed
-Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ config.php
-Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ index.php
-Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ withdraw.php
-Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ activity.php
-Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ refer-earn.php
-Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ leaderboard.php
-Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ asset/
-Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ adm/
-Ã¢â€â€š   Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ auth/index.php
-Ã¢â€â€š   Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ withdrawal.php
-Ã¢â€â€š   Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ withdrawal_action.php
-Ã¢â€â€š   Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ settings.php
-Ã¢â€â€š   Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ broadcast.php
-Ã¢â€â€š   Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ broadcast_send.php
-Ã¢â€â€š   Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ channels.php
-Ã¢â€â€š   Ã¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬ logout.php
-Ã¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬ webhook/
-    Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬ index.php
-    Ã¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬ setup.php
+├── .htaccess
+├── .env                  ← created in step 3, never committed
+├── config.php
+├── index.php
+├── withdraw.php
+├── activity.php
+├── refer-earn.php
+├── leaderboard.php
+├── asset/
+├── adm/
+│   ├── auth/index.php
+│   ├── withdrawal.php
+│   ├── withdrawal_action.php
+│   ├── settings.php
+│   ├── broadcast.php
+│   ├── broadcast_send.php
+│   ├── channels.php
+│   └── logout.php
+└── webhook/
+    ├── index.php
+    └── setup.php
 ```
 
 > **Better (VPS only):** put `config.php` and `.env` **above** `public_html/`
@@ -102,7 +102,7 @@ Copy `.env.example` to `.env` in the web root and fill in real values:
 ```ini
 APP_ENV=production
 APP_DEBUG=0
-# APP_URL is optional Ã¢â‚¬â€ omit it and the domain is auto-detected per request.
+# APP_URL is optional — omit it and the domain is auto-detected per request.
 # APP_URL=https://yourdomain.com
 APP_TIMEZONE=Asia/Kolkata
 
@@ -120,19 +120,19 @@ LOG_DIR=/home/myuser/logs
 
 Rules:
 
-- `APP_URL` Ã¢â‚¬â€ **optional**. When omitted, the app derives the origin from each
+- `APP_URL` — **optional**. When omitted, the app derives the origin from each
   request (`HTTP_HOST` plus `HTTPS` / `X-Forwarded-Proto`), so links, the
   Telegram webhook URL and the WebApp button all follow whatever domain the
-  site is served from. Set it only if detection is wrong Ã¢â‚¬â€ for example when the
+  site is served from. Set it only if detection is wrong — for example when the
   app lives in a subdirectory (`https://example.com/app`) or a proxy rewrites
   the host. **No trailing slash** when you do set it.
-- `APP_DEBUG=0` Ã¢â‚¬â€ always in production. `1` prints stack traces to visitors.
-- `LOG_DIR` Ã¢â‚¬â€ an absolute path to a writable folder **outside** `public_html`.
+- `APP_DEBUG=0` — always in production. `1` prints stack traces to visitors.
+- `LOG_DIR` — an absolute path to a writable folder **outside** `public_html`.
   Leave empty to use the host's default error log.
 - File permissions: `chmod 600 .env` (owner read/write only).
 
 If your host does not allow `.env` files, set the same keys as real environment
-variables instead (cPanel Ã¢â€ â€™ **MultiPHP INI Editor** or an Apache `SetEnv`
+variables instead (cPanel → **MultiPHP INI Editor** or an Apache `SetEnv`
 block). Real environment variables always win over `.env`.
 
 ---
@@ -150,7 +150,7 @@ Open these in a browser:
 | `https://yourdomain.com/config.php` | **403 Forbidden** |
 
 If `.env` or `schema.sql` returns content, your host is ignoring `.htaccess`
-(nginx does). See [Ã‚Â§10 nginx](#10-if-you-are-on-nginx) below.
+(nginx does). See [§10 nginx](#10-if-you-are-on-nginx) below.
 
 ---
 
@@ -180,13 +180,13 @@ Also change the seeded email `admin@referearn.com` to a real address.
 
 ## 6. Configure the bot
 
-Go to **Admin Ã¢â€ â€™ Settings** and fill in:
+Go to **Admin → Settings** and fill in:
 
 | Setting | Value |
 |---|---|
-| `bot_token` | The token from @BotFather. **Required** Ã¢â‚¬â€ without it the mini app cannot verify the Telegram identity and every page shows the "Open inside Telegram" screen. |
+| `bot_token` | The token from @BotFather. **Required** — without it the mini app cannot verify the Telegram identity and every page shows the "Open inside Telegram" screen. |
 | `bot_username` | Your bot's username **without** the `@` |
-| `bot_web_app_url` | **Leave blank** Ã¢â‚¬â€ it follows the current domain automatically. Set it only to pin a specific URL. |
+| `bot_web_app_url` | **Leave blank** — it follows the current domain automatically. Set it only to pin a specific URL. |
 | `webhook_secret` | Any long random string (letters + digits) |
 
 ### How the mini app authenticates
@@ -198,10 +198,10 @@ against `bot_token` and stores it in the session. Every later request resolves
 the user from that session value.
 
 If `bot_token` is blank or wrong, the signature check fails and the app falls
-back to the "Open inside Telegram" screen Ã¢â‚¬â€ that is the symptom to look for.
+back to the "Open inside Telegram" screen — that is the symptom to look for.
 
 The same applies to `withdrawal_api_url`: it is an optional external payout hook.
-Leave it blank unless you are forwarding payouts to your own payout service Ã¢â‚¬â€ see
+Leave it blank unless you are forwarding payouts to your own payout service — see
 [First withdrawal rule](#first-withdrawal-rule) below.
 
 Generate a secret:
@@ -212,9 +212,9 @@ php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 
 Then, in @BotFather:
 
-1. `/mybots` Ã¢â€ â€™ your bot Ã¢â€ â€™ **Bot Settings Ã¢â€ â€™ Menu Button Ã¢â€ â€™ Configure menu button**
-   Ã¢â€ â€™ set the URL to `https://yourdomain.com`.
-2. `/mybots` Ã¢â€ â€™ your bot Ã¢â€ â€™ **Bot Settings Ã¢â€ â€™ Domain** Ã¢â€ â€™ add your domain
+1. `/mybots` → your bot → **Bot Settings → Menu Button → Configure menu button**
+   → set the URL to `https://yourdomain.com`.
+2. `/mybots` → your bot → **Bot Settings → Domain** → add your domain
    (required for Web Apps to open).
 
 ---
@@ -225,7 +225,7 @@ Open **`https://yourdomain.com/webhook/setup.php`** (admin login required).
 
 1. The status panel shows the current webhook state.
 2. Press **Set Webhook**.
-3. Press **Test** Ã¢â‚¬â€ Telegram should reply `ok: true`.
+3. Press **Test** — Telegram should reply `ok: true`.
 4. Send `/start` to your bot from a real Telegram account. The update should
    appear in the "Recent updates" table within a second or two.
 
@@ -243,17 +243,17 @@ If **Set Webhook** fails:
 
 ## 8. Configure the access gate
 
-**Admin Ã¢â€ â€™ Channels** (`/adm/channels.php`):
+**Admin → Channels** (`/adm/channels.php`):
 
 1. Add each channel the user must join:
-   - **Chat ID** Ã¢â‚¬â€ e.g. `@mychannel` or `-1001234567890`
-   - **Title** Ã¢â‚¬â€ shown on the lock screen
-   - **Invite URL** Ã¢â‚¬â€ e.g. `https://t.me/mychannel`
+   - **Chat ID** — e.g. `@mychannel` or `-1001234567890`
+   - **Title** — shown on the lock screen
+   - **Invite URL** — e.g. `https://t.me/mychannel`
 2. **The bot must be an administrator of every channel** you list, otherwise
    `getChatMember` fails and the check is skipped.
 3. Toggle **Require channel join** on when you are ready.
 
-**Admin Ã¢â€ â€™ Settings Ã¢â€ â€™ Access Gate**:
+**Admin → Settings → Access Gate**:
 
 | Setting | Meaning |
 |---|---|
@@ -273,9 +273,9 @@ A user's **first** withdrawal is treated differently from every later one:
 | | First withdrawal | Later withdrawals |
 |---|---|---|
 | Cap | `min_withdrawal_t` (default 2,000 T) | `max_withdrawal_t` (default 50,000 T) |
-| Minimum | none Ã¢â‚¬â€ any amount from 1 T up to the cap | `min_withdrawal_t` |
+| Minimum | none — any amount from 1 T up to the cap | `min_withdrawal_t` |
 | Referral requirement | skipped | `min_referrals_withdrawal` |
-| Payout | sent to `withdrawal_api_url` immediately | stays `pending` for the admin queue |
+| Payout | sent to `withdrawal_api_url` immediately | sent to `withdrawal_api_url` when an admin approves it |
 
 The cap is deliberately tied to `min_withdrawal_t` so there is a single number
 to tune: raising the minimum also raises the first-withdrawal ceiling.
@@ -302,10 +302,17 @@ in `withdrawals.api_response`.
 
 The payout is treated as **failed** when the response is non-2xx, when it
 contains `"success": false`, or when `status` is one of `failed`, `failure`,
-`error`, `rejected`, `declined`. A failed payout leaves the withdrawal
-`pending` with the reason in `admin_note`, so an admin can approve or reject it
-from **Admin Ã¢â€ â€™ Withdrawals** as usual. The user's balance is never restored
-automatically Ã¢â‚¬â€ only an explicit rejection refunds it.
+`error`, `rejected`, `declined`.
+
+The API is called from **two** places:
+
+| Trigger | On failure |
+|---|---|
+| A user's first withdrawal, immediately after the request is saved | The withdrawal stays `pending` with the reason in `admin_note`, so an admin can approve or reject it from **Admin → Withdrawals** as usual. |
+| An admin approving a withdrawal in **Admin → Withdrawals** | The admin's decision stands: the withdrawal stays `completed` and the reason is recorded in `admin_note` for follow-up. |
+
+The user's balance is never restored automatically — only an explicit
+rejection refunds it.
 
 Leave `withdrawal_api_url` blank to keep every withdrawal in the admin queue.
 
@@ -313,7 +320,7 @@ Leave `withdrawal_api_url` blank to keep every withdrawal in the admin queue.
 
 ## 10. Broadcast delivery
 
-Broadcasts are sent **synchronously** from the admin composer Ã¢â‚¬â€ there is no
+Broadcasts are sent **synchronously** from the admin composer — there is no
 queue, no cron job and no worker process to install. When you press **Send**,
 `adm/broadcast_send.php` saves the broadcast, then calls the Telegram Bot API
 once per recipient before the page redirects.
@@ -322,7 +329,7 @@ once per recipient before the page redirects.
 
 | Requirement | Why |
 |---|---|
-| `bot_token` set in **Admin Ã¢â€ â€™ Settings** | Without it the broadcast is saved as a draft and the send is refused with "Bot token is not configured." |
+| `bot_token` set in **Admin → Settings** | Without it the broadcast is saved as a draft and the send is refused with "Bot token is not configured." |
 | Recipients have started the bot | Only users with `bot_started_at` set are messaged. Telegram forbids bots from opening a chat. |
 | `uploads/` writable | Media broadcasts are uploaded from disk. The directory is created automatically on first use. |
 
@@ -343,13 +350,15 @@ Users with `status = 'blocked'` are always excluded.
 3. Each recipient is attempted in turn, with a 50 ms pause between sends to stay
    under Telegram's ~30 messages/second limit.
 4. A `429 Too Many Requests` response is retried once after the `retry_after`
-   delay Telegram asks for (clamped to 1Ã¢â‚¬â€œ30 seconds).
+   delay Telegram asks for (clamped to 1–30 seconds).
 5. A `400` response complaining about *entities* is retried once with
    `parse_mode` removed, so a stray `*` or `_` in the message does not fail the
    whole broadcast.
-6. `delivered_count` / `failed_count` are written every 25 sends, so a timeout
+6. For media broadcasts the file is uploaded **once**; the returned `file_id` is
+   reused for every remaining recipient instead of re-uploading the file.
+7. `delivered_count` / `failed_count` are written every 25 sends, so a timeout
    still leaves usable numbers.
-7. `status` ends as `sent` when at least one message got through, otherwise
+8. `status` ends as `sent` when at least one message got through, otherwise
    `failed`, and `sent_at` is stamped.
 
 The admin sees a toast with the outcome, e.g.
@@ -360,15 +369,30 @@ The admin sees a toast with the outcome, e.g.
 - Images (JPG, PNG, GIF, WebP) up to 5 MB, video (MP4, MOV) up to 50 MB, and
   documents (PDF, DOC, DOCX, XLS, XLSX, ZIP) up to 20 MB.
 - Files are stored under `uploads/broadcasts/` with a random name and are
-  **never served over HTTP** Ã¢â‚¬â€ `.htaccess` returns 404 for `/uploads/`.
-- Messages are sent with `parse_mode = Markdown`, matching the composer's
-  formatting chips (`*bold*`, `_italic_`, `[text](url)`, Ã¢â‚¬Â¦).
-- Up to 8 inline URL buttons per broadcast, one per row.
+  **never served over HTTP** — `.htaccess` returns 404 for `/uploads/`.
+- The composer's Markdown (`*bold*`, `_italic_`, `__underline__`, `~strike~`,
+  `||spoiler||`, `` `code` ``, `[text](url)`, `> quote`) is converted to
+  Telegram **HTML** server-side and sent with `parse_mode = 'HTML'`. Legacy
+  Markdown does not support underline, strike, spoiler or quotes, and
+  MarkdownV2 would require escaping every `.`/`!`/`-`.
+- Captions on media broadcasts are limited to **1024** characters; text
+  broadcasts allow 4096. A text broadcast must have text — buttons alone are
+  rejected, because `sendMessage` refuses an empty message.
+- GIFs are sent with `sendAnimation` so they stay animated.
+- Up to 8 inline URL buttons per broadcast, one per row. Only `http(s)://` and
+  `tg://` links are accepted — Telegram rejects `mailto:` with
+  `BUTTON_URL_INVALID`. A button with a label but no link is an error rather
+  than being silently dropped.
+- File type detection uses `finfo` first and falls back to the original
+  filename extension, because legacy `.doc`/`.xls` report as
+  `application/CDFV2` and modern `.docx`/`.xlsx` report as `application/zip`.
 
 > **Upload limits.** PHP's `upload_max_filesize` and `post_max_size` must be at
 > least as large as the biggest file you intend to send. The defaults in
 > `php.ini` are often 2 MB, which will reject images before the app's own size
-> check runs. Raise both to `50M` if you plan to send video.
+> check runs. Raise both to `50M` if you plan to send video. When
+> `post_max_size` is exceeded PHP empties `$_POST` and `$_FILES`; the handler
+> detects this and reports the real cause instead of "session expired".
 
 ### Long sends
 
@@ -444,7 +468,7 @@ Nightly `mysqldump` via cron:
 ```
 
 Keep at least 14 days. The `wallet_transactions` and `withdrawals` tables are
-financial records Ã¢â‚¬â€ never prune them.
+financial records — never prune them.
 
 ---
 
@@ -455,7 +479,7 @@ git pull origin main
 ```
 
 Then, only if `schema.sql` changed, apply the new statements manually (never
-re-import the whole file over a live database Ã¢â‚¬â€ it drops tables).
+re-import the whole file over a live database — it drops tables).
 
 ---
 
@@ -468,8 +492,8 @@ re-import the whole file over a live database Ã¢â‚¬â€ it drops tables
 | Blank white page | `APP_DEBUG=0` is hiding a fatal error. Set it to `1` temporarily, reload, then set it back. |
 | "Database connection failed" | Wrong `DB_*` values in `.env`, or the DB user lacks privileges. |
 | Login says "Invalid credentials" | The `admins` row was not seeded, or the password hash was overwritten. |
-| Mini app opens but shows no data | `telegram_id` mismatch Ã¢â‚¬â€ the user row was created by a different bot. |
-| "Open inside Telegram" screen inside Telegram | `bot_token` is blank or wrong, so `webapp-auth.php` cannot verify `initData`. Set it in Admin Ã¢â€ â€™ Settings. |
+| Mini app opens but shows no data | `telegram_id` mismatch — the user row was created by a different bot. |
+| "Open inside Telegram" screen inside Telegram | `bot_token` is blank or wrong, so `webapp-auth.php` cannot verify `initData`. Set it in Admin → Settings. |
 | Webhook returns 401 | `webhook_secret` in Settings does not match the `secret_token` Telegram was registered with. Press **Rotate** then **Set** again. |
 | Lock screen never goes away | `require_bot_start` is on and the user has not sent `/start`, or the channel check is failing in strict mode. |
 | Referral never credited | The referral is applied on the user's **first app load** after `/start CODE`. If they never open the app, it stays pending by design. |

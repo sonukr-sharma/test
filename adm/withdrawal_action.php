@@ -32,7 +32,7 @@ try {
     $pdo->beginTransaction();
 
     $stmt = $pdo->prepare(
-        'SELECT `id`, `user_id`, `amount_t`, `status`
+        'SELECT `id`, `user_id`, `amount_t`, `upi_id`, `status`
            FROM `withdrawals`
           WHERE `id` = :id
           FOR UPDATE'
@@ -132,12 +132,31 @@ try {
 
     $pdo->commit();
 
-    $_SESSION['admin_flash'] = [
-        'type'    => 'success',
-        'message' => $action === 'approve'
-            ? 'Withdrawal #' . $id . ' approved.'
-            : 'Withdrawal #' . $id . ' rejected and refunded.',
-    ];
+    // Approved withdrawals are forwarded to the configured payout API. The
+    // admin's decision already stands, so a payout failure keeps the
+    // `completed` status and records the reason in `admin_note`.
+    if ($action === 'approve') {
+        $payout = process_withdrawal_payout(
+            $id,
+            (float) $withdrawal['amount_t'],
+            (string) ($withdrawal['upi_id'] ?? ''),
+            'manual',
+            (int) $admin['id']
+        );
+
+        $_SESSION['admin_flash'] = [
+            'type'    => $payout['ok'] ? 'success' : 'warning',
+            'message' => $payout['ok']
+                ? 'Withdrawal #' . $id . ' approved and paid out'
+                    . ($payout['transaction_id'] !== null ? ' (txid ' . $payout['transaction_id'] . ').' : '.')
+                : 'Withdrawal #' . $id . ' approved, but the payout API failed: ' . (string) $payout['error'],
+        ];
+    } else {
+        $_SESSION['admin_flash'] = [
+            'type'    => 'success',
+            'message' => 'Withdrawal #' . $id . ' rejected and refunded.',
+        ];
+    }
 } catch (Throwable $e) {
     if (isset($pdo) && $pdo->inTransaction()) {
         $pdo->rollBack();

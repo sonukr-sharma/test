@@ -249,8 +249,16 @@ try {
     </header>
 
     <?php if ($flash !== null): ?>
-      <div class="mb-5 flex items-start gap-2.5 rounded-xl px-4 py-3 text-xs font-medium border <?= $flash['type'] === 'error' ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700' ?>">
-        <i class="fa-solid <?= $flash['type'] === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check' ?> mt-0.5 shrink-0"></i>
+      <?php
+        $flashType = $flash['type'] ?? 'success';
+        $flashSkin = match ($flashType) {
+            'error'   => ['bg-rose-50 border-rose-200 text-rose-700', 'fa-circle-exclamation'],
+            'warning' => ['bg-amber-50 border-amber-200 text-amber-700', 'fa-triangle-exclamation'],
+            default   => ['bg-emerald-50 border-emerald-200 text-emerald-700', 'fa-circle-check'],
+        };
+      ?>
+      <div class="mb-5 flex items-start gap-2.5 rounded-xl px-4 py-3 text-xs font-medium border <?= $flashSkin[0] ?>">
+        <i class="fa-solid <?= $flashSkin[1] ?> mt-0.5 shrink-0"></i>
         <span><?= e($flash['message']) ?></span>
       </div>
     <?php endif; ?>

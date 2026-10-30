@@ -572,21 +572,40 @@ function withdrawal_api_payout(float $amountT, string $upiId, string $txid = '',
 }
 
 /**
- * Pay out a first withdrawal immediately through the configured API.
+ * Forward a withdrawal to the configured payout API and record the outcome.
  *
- * Runs after the request has been committed so a slow payout endpoint never
- * holds the wallet row lock. On success the withdrawal is marked completed;
- * on failure it stays pending for the admin queue and the API answer is kept
- * for debugging.
+ * Runs after the withdrawal row has been committed so a slow payout endpoint
+ * never holds the wallet row lock.
  *
- * @return array{status: string, message: string}
+ * Two callers use this:
+ *  - `auto`   — the first-withdrawal auto-payout in withdraw.php. A failed
+ *               payout leaves the request `pending` for the admin queue.
+ *  - `manual` — an admin approving the request. The admin's decision stands,
+ *               so a failed payout keeps the `completed` status and records
+ *               the reason in `admin_note` for follow-up.
+ *
+ * @return array{status: string, message: string, ok: bool, transaction_id: ?string, error: ?string}
  */
-function process_first_withdrawal_payout(int $withdrawalId, float $amountT, string $upiId): array
-{
+function process_withdrawal_payout(
+    int $withdrawalId,
+    float $amountT,
+    string $upiId,
+    string $mode = 'auto',
+    ?int $adminId = null
+): array {
+    $isManual = $mode === 'manual';
+    $label    = $isManual ? 'Withdrawal #' . $withdrawalId : 'Your first withdrawal of ' . t_format($amountT);
+
     if (withdrawal_api_url() === '') {
+        // A blank URL is a deliberate configuration, not a failure.
         return [
-            'status'  => 'pending',
-            'message' => 'Your first withdrawal of ' . t_format($amountT) . ' is queued for review.',
+            'status'         => $isManual ? 'completed' : 'pending',
+            'message'        => $isManual
+                ? 'Withdrawal #' . $withdrawalId . ' approved.'
+                : $label . ' is queued for review.',
+            'ok'             => $isManual,
+            'transaction_id' => null,
+            'error'          => $isManual ? null : 'Withdrawal API is not configured.',
         ];
     }
 
@@ -600,16 +619,28 @@ function process_first_withdrawal_payout(int $withdrawalId, float $amountT, stri
         $stmt->execute([':id' => $withdrawalId]);
         $current = $stmt->fetchColumn();
 
-        if ($current === false || $current !== 'pending') {
+        // A manual approval has already moved the row to `completed`.
+        $allowedFrom = $isManual ? ['pending', 'processing', 'completed'] : ['pending'];
+
+        if ($current === false || !in_array((string) $current, $allowedFrom, true)) {
             $pdo->rollBack();
 
             return [
-                'status'  => (string) $current,
-                'message' => 'Your first withdrawal of ' . t_format($amountT) . ' is already being processed.',
+                'status'         => (string) $current,
+                'message'        => $label . ' is already being processed.',
+                'ok'             => false,
+                'transaction_id' => null,
+                'error'          => 'Unexpected status: ' . (string) $current,
             ];
         }
 
-        $newStatus = $result['ok'] ? 'completed' : 'pending';
+        $newStatus = $result['ok'] || $isManual ? 'completed' : 'pending';
+
+        $note = $result['ok'] ? null : mb_substr(
+            ($isManual ? 'Manual payout failed: ' : 'Auto-payout failed: ') . (string) $result['error'],
+            0,
+            500
+        );
 
         $update = $pdo->prepare(
             'UPDATE `withdrawals`
@@ -624,8 +655,8 @@ function process_first_withdrawal_payout(int $withdrawalId, float $amountT, stri
             ':status'    => $newStatus,
             ':txid'      => $result['transaction_id'],
             ':response'  => json_encode($result['response'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-            ':note'      => $result['ok'] ? null : mb_substr('Auto-payout failed: ' . (string) $result['error'], 0, 500),
-            ':processed' => $result['ok'] ? date('Y-m-d H:i:s') : null,
+            ':note'      => $note,
+            ':processed' => $result['ok'] || $isManual ? date('Y-m-d H:i:s') : null,
             ':id'        => $withdrawalId,
         ]);
 
@@ -633,23 +664,28 @@ function process_first_withdrawal_payout(int $withdrawalId, float $amountT, stri
             $history = $pdo->prepare(
                 'INSERT INTO `withdrawal_status_history`
                      (`withdrawal_id`, `from_status`, `to_status`, `note`, `admin_id`)
-                 VALUES (:wid, :from, :to, :note, NULL)'
+                 VALUES (:wid, :from, :to, :note, :admin)'
             );
             $history->execute([
-                ':wid'  => $withdrawalId,
-                ':from' => 'pending',
-                ':to'   => 'completed',
-                ':note' => 'Auto-paid via withdrawal API'
+                ':wid'   => $withdrawalId,
+                ':from'  => (string) $current,
+                ':to'    => 'completed',
+                ':note'  => ($isManual
+                        ? 'Paid out via withdrawal API after admin approval'
+                        : 'Auto-paid via withdrawal API')
                     . ($result['transaction_id'] !== null ? ' (txid ' . $result['transaction_id'] . ')' : ''),
+                ':admin' => $adminId,
             ]);
         }
 
         $audit = $pdo->prepare(
             'INSERT INTO `audit_logs` (`admin_id`, `action`, `entity_type`, `entity_id`, `meta`, `ip_address`)
-             VALUES (NULL, :action, :entity_type, :entity_id, :meta, :ip)'
+             VALUES (:admin, :action, :entity_type, :entity_id, :meta, :ip)'
         );
         $audit->execute([
-            ':action'      => $result['ok'] ? 'withdrawal.auto_payout' : 'withdrawal.auto_payout_failed',
+            ':admin'       => $adminId,
+            ':action'      => ($isManual ? 'withdrawal.manual_payout' : 'withdrawal.auto_payout')
+                . ($result['ok'] ? '' : '_failed'),
             ':entity_type' => 'withdrawal',
             ':entity_id'   => $withdrawalId,
             ':meta'        => json_encode([
@@ -666,27 +702,54 @@ function process_first_withdrawal_payout(int $withdrawalId, float $amountT, stri
             $pdo->rollBack();
         }
 
-        error_log('process_first_withdrawal_payout failed: ' . $e->getMessage());
+        error_log('process_withdrawal_payout failed: ' . $e->getMessage());
 
         return [
-            'status'  => 'pending',
-            'message' => 'Your first withdrawal of ' . t_format($amountT) . ' is queued for review.',
+            'status'         => $isManual ? 'completed' : 'pending',
+            'message'        => $isManual
+                ? 'Withdrawal #' . $withdrawalId . ' approved, but the payout could not be recorded.'
+                : $label . ' is queued for review.',
+            'ok'             => false,
+            'transaction_id' => null,
+            'error'          => $e->getMessage(),
         ];
     }
 
     if ($result['ok']) {
         return [
-            'status'  => 'completed',
-            'message' => 'Your first withdrawal of ' . t_format($amountT) . ' was paid out automatically.',
+            'status'         => 'completed',
+            'message'        => $isManual
+                ? 'Withdrawal #' . $withdrawalId . ' approved and paid out via the API.'
+                : $label . ' was paid out automatically.',
+            'ok'             => true,
+            'transaction_id' => $result['transaction_id'],
+            'error'          => null,
         ];
     }
 
-    error_log('First withdrawal #' . $withdrawalId . ' auto-payout failed: ' . (string) $result['error']);
+    error_log('Withdrawal #' . $withdrawalId . ' ' . $mode . ' payout failed: ' . (string) $result['error']);
 
     return [
-        'status'  => 'pending',
-        'message' => 'Your first withdrawal of ' . t_format($amountT) . ' is queued for review.',
+        'status'         => $isManual ? 'completed' : 'pending',
+        'message'        => $isManual
+            ? 'Withdrawal #' . $withdrawalId . ' approved, but the payout API failed: ' . (string) $result['error']
+            : $label . ' is queued for review.',
+        'ok'             => false,
+        'transaction_id' => null,
+        'error'          => $result['error'],
     ];
+}
+
+/**
+ * Pay out a first withdrawal immediately through the configured API.
+ *
+ * @return array{status: string, message: string}
+ */
+function process_first_withdrawal_payout(int $withdrawalId, float $amountT, string $upiId): array
+{
+    $result = process_withdrawal_payout($withdrawalId, $amountT, $upiId, 'auto');
+
+    return ['status' => $result['status'], 'message' => $result['message']];
 }
 
 /* ---------------------------------------------------------------------
@@ -1039,17 +1102,23 @@ function telegram_send_message(int|string $chatId, string $text, ?array $replyMa
  * Send a photo, video or document to a Telegram chat.
  *
  * The file is uploaded from disk as multipart/form-data so the admin never
- * has to host it at a public URL.
+ * has to host it at a public URL. Pass `$fileId` (from a previous response) to
+ * reuse an already-uploaded file instead of re-uploading it for every
+ * recipient — essential for large videos.
  *
  * @param  array<string, mixed>|null $replyMarkup
  * @return array{ok: bool, result?: mixed, description?: string, error?: string}
  */
-function telegram_send_media(int|string $chatId, string $mediaType, string $filePath, string $caption = '', ?array $replyMarkup = null, string $parseMode = 'HTML'): array
+function telegram_send_media(int|string $chatId, string $mediaType, string $filePath, string $caption = '', ?array $replyMarkup = null, string $parseMode = 'HTML', string $fileId = ''): array
 {
-    $method = match ($mediaType) {
-        'image' => 'sendPhoto',
-        'video' => 'sendVideo',
-        'file'  => 'sendDocument',
+    // Animated GIFs must go through sendAnimation or Telegram renders a still.
+    $isAnimation = $mediaType === 'image' && strtolower(pathinfo($filePath, PATHINFO_EXTENSION)) === 'gif';
+
+    $method = match (true) {
+        $isAnimation   => 'sendAnimation',
+        $mediaType === 'image' => 'sendPhoto',
+        $mediaType === 'video' => 'sendVideo',
+        $mediaType === 'file'  => 'sendDocument',
         default => null,
     };
 
@@ -1063,19 +1132,20 @@ function telegram_send_media(int|string $chatId, string $mediaType, string $file
         return ['ok' => false, 'error' => 'Bot token is not configured.'];
     }
 
-    if (!is_file($filePath)) {
+    if ($fileId === '' && !is_file($filePath)) {
         return ['ok' => false, 'error' => 'Media file is missing: ' . basename($filePath)];
     }
 
-    $field = match ($mediaType) {
-        'image' => 'photo',
-        'video' => 'video',
-        'file'  => 'document',
+    $field = match (true) {
+        $isAnimation   => 'animation',
+        $mediaType === 'image' => 'photo',
+        $mediaType === 'video' => 'video',
+        $mediaType === 'file'  => 'document',
     };
 
     $params = [
-        'chat_id'    => (string) $chatId,
-        $field       => new CURLFile($filePath),
+        'chat_id' => (string) $chatId,
+        $field    => $fileId !== '' ? $fileId : new CURLFile($filePath),
     ];
 
     if ($parseMode !== 'none' && $parseMode !== '') {
@@ -2253,6 +2323,42 @@ function broadcast_reply_markup(array $buttons): ?array
 }
 
 /**
+ * Pull the reusable `file_id` out of a Telegram media response.
+ *
+ * Reusing it avoids re-uploading the same file for every recipient, which is
+ * what makes large video broadcasts time out.
+ */
+function broadcast_extract_file_id(mixed $result, string $mediaType): string
+{
+    if (!is_array($result)) {
+        return '';
+    }
+
+    $candidates = match ($mediaType) {
+        'image' => [$result['photo'] ?? null, $result['animation'] ?? null, $result['document'] ?? null],
+        'video' => [$result['video'] ?? null, $result['document'] ?? null],
+        default => [$result['document'] ?? null],
+    };
+
+    foreach ($candidates as $candidate) {
+        if (!is_array($candidate)) {
+            continue;
+        }
+
+        // sendPhoto returns an array of PhotoSize, largest last.
+        if (isset($candidate[0]) && is_array($candidate[0])) {
+            $candidate = $candidate[count($candidate) - 1];
+        }
+
+        if (!empty($candidate['file_id'])) {
+            return (string) $candidate['file_id'];
+        }
+    }
+
+    return '';
+}
+
+/**
  * Deliver one broadcast to its audience, synchronously.
  *
  * Writes `sending` before the loop and `sent`/`failed` afterwards, and keeps
@@ -2322,12 +2428,13 @@ function broadcast_deliver(int $broadcastId): array
     $delivered = 0;
     $failed    = 0;
     $lastError = '';
+    $fileId    = '';
 
     foreach ($recipients as $recipient) {
         $chatId = $recipient['telegram_id'];
 
         $response = $useMedia
-            ? telegram_send_media($chatId, $mediaType, $mediaPath, $text, $replyMarkup, $parseMode)
+            ? telegram_send_media($chatId, $mediaType, $mediaPath, $text, $replyMarkup, $parseMode, $fileId)
             : telegram_send_message($chatId, $text, $replyMarkup, $parseMode);
 
         // Telegram rate-limits at ~30 messages/second; back off and retry once.
@@ -2336,7 +2443,7 @@ function broadcast_deliver(int $broadcastId): array
             sleep(max(1, min(30, $retryAfter)));
 
             $response = $useMedia
-                ? telegram_send_media($chatId, $mediaType, $mediaPath, $text, $replyMarkup, $parseMode)
+                ? telegram_send_media($chatId, $mediaType, $mediaPath, $text, $replyMarkup, $parseMode, $fileId)
                 : telegram_send_message($chatId, $text, $replyMarkup, $parseMode);
         }
 
@@ -2344,12 +2451,18 @@ function broadcast_deliver(int $broadcastId): array
         if (($response['ok'] ?? false) !== true && (int) ($response['error_code'] ?? 0) === 400
             && stripos((string) ($response['description'] ?? ''), 'entit') !== false) {
             $response = $useMedia
-                ? telegram_send_media($chatId, $mediaType, $mediaPath, $text, $replyMarkup, 'none')
+                ? telegram_send_media($chatId, $mediaType, $mediaPath, $text, $replyMarkup, 'none', $fileId)
                 : telegram_send_message($chatId, $text, $replyMarkup, 'none');
         }
 
         if (($response['ok'] ?? false) === true) {
             $delivered++;
+
+            // Reuse the uploaded file for the remaining recipients instead of
+            // re-uploading it every time.
+            if ($useMedia && $fileId === '') {
+                $fileId = broadcast_extract_file_id($response['result'] ?? null, $mediaType);
+            }
         } else {
             $failed++;
             $lastError = (string) ($response['description'] ?? $response['error'] ?? 'Unknown error');

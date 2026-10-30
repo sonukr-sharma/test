@@ -352,7 +352,8 @@ $s = settings();
           <p class="text-[11px] leading-relaxed text-slate-600">
             A user's first withdrawal is capped at the <strong>Minimum Withdrawal Amount</strong> above and is paid out
             automatically through the Withdrawal API. It also skips the minimum-referral requirement. Every later
-            withdrawal is only bounded by the Maximum Withdrawal Amount and stays in the admin queue.
+            withdrawal is only bounded by the Maximum Withdrawal Amount and stays in the admin queue — approving one
+            there also calls the Withdrawal API.
           </p>
         </div>
       </div>
@@ -381,7 +382,7 @@ $s = settings();
                         <i class="fa-regular fa-copy text-xs"></i>
                       </button>
                     </div>
-                    <p class="mt-1 text-[11px] text-slate-400">Optional. Used to auto-pay a user's first withdrawal — leave blank to keep every withdrawal in the admin panel.</p>
+                    <p class="mt-1 text-[11px] text-slate-400">Optional. Called when a user's first withdrawal is auto-paid and when an admin approves a withdrawal — leave blank to keep every withdrawal in the admin panel.</p>
                   </div>
                 </div>
 
