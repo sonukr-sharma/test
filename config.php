@@ -285,6 +285,7 @@ function default_settings(): array
         // Referral
         'referral_reward_t'            => 150.0,
         'min_referrals_withdrawal'     => 5,
+                'min_referrals_subsequent_withdrawal' => 20,
 
         // Withdrawal
         'min_withdrawal_t'             => 2000.0,

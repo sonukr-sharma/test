@@ -436,7 +436,8 @@ INSERT INTO `admins` (`name`, `username`, `email`, `password_hash`, `role`) VALU
 -- Settings mirrored from adm/settings.php
 INSERT INTO `settings` (`key`, `value`, `data_type`, `group_name`, `label`) VALUES
   ('referral_reward_t',        '150',                          'decimal', 'referral',  'Reward per Referral (T)'),
-  ('min_referrals_withdrawal', '5',                            'integer', 'referral',  'Minimum Referrals per Withdrawal'),
+  ('min_referrals_withdrawal', '5',                            'integer', 'referral',  'Minimum Referrals for the 1st Withdrawal'),
+    ('min_referrals_subsequent_withdrawal', '20',                'integer', 'referral',  'Minimum Referrals for Every Withdrawal After the 1st'),
   ('min_withdrawal_t',         '2000',                         'decimal', 'withdrawal','Minimum Withdrawal Amount (T) — also caps the first withdrawal'),
   ('max_withdrawal_t',         '50000',                        'decimal', 'withdrawal','Maximum Withdrawal Amount (T)'),
   ('auto_approve_withdrawals', '0',                            'boolean', 'withdrawal','Auto Approve Withdrawals'),

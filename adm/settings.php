@@ -19,6 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fields = [
             'referral_reward_t'            => 'decimal',
             'min_referrals_withdrawal'     => 'integer',
+                        'min_referrals_subsequent_withdrawal' => 'integer',
             'min_withdrawal_t'             => 'decimal',
             'max_withdrawal_t'             => 'decimal',
             'auto_approve_withdrawals'     => 'boolean',
@@ -50,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
 
             $groups = [
-                'referral'   => ['referral_reward_t', 'min_referrals_withdrawal'],
+                'referral'   => ['referral_reward_t', 'min_referrals_withdrawal', 'min_referrals_subsequent_withdrawal'],
                 'withdrawal' => ['min_withdrawal_t', 'max_withdrawal_t', 'auto_approve_withdrawals',
                                  'withdrawal_api_url', 'coin_to_inr_rate', 'withdrawal_processing_hours'],
                 'bot'        => ['bot_token', 'bot_web_app_url'],
@@ -266,13 +267,21 @@ $s = settings();
             </div>
 
                         <div>
-                          <label class="block text-xs font-medium text-slate-700 mb-1.5">Minimum Referrals per Withdrawal</label>
+                                                  <label class="block text-xs font-medium text-slate-700 mb-1.5">Minimum Referrals for the 1st Withdrawal</label>
                           <div class="flex rounded-lg border border-slate-200 overflow-hidden bg-slate-50/40 focus-within:border-indigo-500">
                             <input type="text" name="min_referrals_withdrawal" value="<?= e((string) $s['min_referrals_withdrawal']) ?>" class="w-full px-3.5 py-2 text-sm text-slate-800 bg-white focus:outline-none" />
                             <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">refs</span>
                           </div>
                         </div>
-                      </div>
+
+                                                <div>
+                                                  <label class="block text-xs font-medium text-slate-700 mb-1.5">Minimum Referrals for Every Withdrawal After the 1st</label>
+                                                  <div class="flex rounded-lg border border-slate-200 overflow-hidden bg-slate-50/40 focus-within:border-indigo-500">
+                                                    <input type="text" name="min_referrals_subsequent_withdrawal" value="<?= e((string) $s['min_referrals_subsequent_withdrawal']) ?>" class="w-full px-3.5 py-2 text-sm text-slate-800 bg-white focus:outline-none" />
+                                                    <span class="px-3.5 py-2 bg-slate-100/80 text-slate-600 text-xs font-medium flex items-center border-l border-slate-200">refs</span>
+                                                  </div>
+                                                </div>
+                                              </div>
         </div>
 
         <!-- Info Banner -->

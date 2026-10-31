@@ -9,6 +9,7 @@ $withdrawalsEnabled = (bool) setting('withdrawals_enabled', true);
 $minWithdrawalT     = (float) setting('min_withdrawal_t', 2000);
 $maxWithdrawalT     = (float) setting('max_withdrawal_t', 50000);
 $minReferrals       = (int) setting('min_referrals_withdrawal', 5);
+$minReferralsSubseq = (int) setting('min_referrals_subsequent_withdrawal', 20);
 $processingHours    = (int) setting('withdrawal_processing_hours', 24);
 $balanceT           = (float) $user['balance_t'];
 $referralCount      = (int) $user['referral_count'];
@@ -19,7 +20,10 @@ $isFirstWithdrawal  = is_first_withdrawal((int) $user['id']);
 $firstWithdrawalMax = first_withdrawal_max_t();
 $effectiveMinT      = $isFirstWithdrawal ? 1.0 : $minWithdrawalT;
 $effectiveMaxT      = $isFirstWithdrawal ? $firstWithdrawalMax : $maxWithdrawalT;
-$referralsRequired  = $isFirstWithdrawal ? 0 : $minReferrals;
+
+// Referral requirement: the 1st withdrawal needs min_referrals_withdrawal;
+// every later withdrawal needs min_referrals_subsequent_withdrawal.
+$referralsRequired  = $isFirstWithdrawal ? $minReferrals : $minReferralsSubseq;
 
 /**
  * Build the quick-pick amount chips: the minimum, two random values rounded to
