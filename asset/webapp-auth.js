@@ -30,91 +30,28 @@
     // Private mode without storage: fall through and try once per page load.
   }
 
-  var FP_CDN = 'https://openfpcdn.io/fingerprintjs/v4/iife.min.js';
-  var FP_TIMEOUT = 4000;
-
-  /**
-   * Resolve the FingerprintJS visitorId, or '' if the library cannot be loaded
-   * or is too slow. The fingerprint is a nice-to-have: a blocked CDN, an old
-   * WebView or a slow network must never stop the user from signing in.
-   */
-  function loadFingerprint() {
-    return new Promise(function (resolve) {
-      var settled = false;
-
-      function finish(value) {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        resolve(value);
-      }
-
-      setTimeout(function () {
-        finish('');
-      }, FP_TIMEOUT);
-
-      function compute() {
-        try {
-          window.FingerprintJS.load()
-            .then(function (agent) {
-              return agent.get();
-            })
-            .then(function (result) {
-              finish(result && result.visitorId ? String(result.visitorId) : '');
-            })
-            .catch(function () {
-              finish('');
-            });
-        } catch (e) {
-          finish('');
-        }
-      }
-
-      if (window.FingerprintJS) {
-        compute();
+  fetch(base + 'webapp-auth.php', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ initData: tg.initData })
+  })
+    .then(function (response) {
+      return response.json();
+    })
+    .then(function (result) {
+      if (result && result.ok) {
+        window.location.reload();
         return;
       }
 
-      var tag = document.createElement('script');
-      tag.src = FP_CDN;
-      tag.async = true;
-      tag.onload = compute;
-      tag.onerror = function () {
-        finish('');
-      };
-      document.head.appendChild(tag);
-    });
-  }
-
-  loadFingerprint().then(function (visitorId) {
-    fetch(base + 'webapp-auth.php', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        initData: tg.initData,
-        fingerprint: visitorId,
-        platform: tg.platform || ''
-      })
+      try {
+        window.sessionStorage.removeItem(STORAGE_KEY);
+      } catch (e) {}
     })
-      .then(function (response) {
-        return response.json();
-      })
-      .then(function (result) {
-        if (result && result.ok) {
-          window.location.reload();
-          return;
-        }
-
-        try {
-          window.sessionStorage.removeItem(STORAGE_KEY);
-        } catch (e) {}
-      })
-      .catch(function () {
-        try {
-          window.sessionStorage.removeItem(STORAGE_KEY);
-        } catch (e) {}
-      });
-  });
+    .catch(function () {
+      try {
+        window.sessionStorage.removeItem(STORAGE_KEY);
+      } catch (e) {}
+    });
 })();

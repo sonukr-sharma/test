@@ -35,7 +35,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'require_bot_start'            => 'boolean',
             'channel_gate_strict'          => 'boolean',
             'channel_gate_message'         => 'string',
-            'device_flag_threshold'        => 'integer',
         ];
 
         try {
@@ -58,7 +57,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'bonus'      => ['signup_bonus_t', 'enable_signup_bonus'],
                 'platform'   => ['allow_registration', 'withdrawals_enabled'],
                 'gate'       => ['require_channel_join', 'require_bot_start', 'channel_gate_strict', 'channel_gate_message'],
-                'security'   => ['device_flag_threshold'],
             ];
 
             foreach ($fields as $key => $type) {
@@ -592,53 +590,6 @@ $s = settings();
                   <a href="channels.php" class="flex items-center justify-center gap-2 w-full px-3.5 py-2 rounded-lg border border-[#6d37f7]/30 bg-[#f2edff]/60 text-xs font-semibold text-[#6d37f7] hover:bg-[#f2edff] transition-colors">
                     <i class="fa-solid fa-tower-broadcast text-xs"></i>
                     Manage Required Channels
-                  </a>
-                </div>
-              </div>
-
-              <!-- Save Changes Button -->
-              <div class="mt-5 flex justify-end">
-                <button type="submit" class="w-full sm:w-auto justify-center bg-gradient-to-r from-[#6c3cf7] to-[#5a29e4] hover:opacity-95 text-white font-medium text-xs px-5 py-3 sm:py-2.5 rounded-xl shadow-md shadow-indigo-500/25 flex items-center gap-2 transition">
-                  <i class="fa-solid fa-floppy-disk"></i>
-                  <span>Save Changes</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- 8. Device Fingerprinting -->
-            <div class="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 flex flex-col justify-between">
-              <div>
-                <!-- Card Header -->
-                <div class="flex items-center gap-3.5 mb-6">
-                  <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#f2edff] text-[#6d37f7] flex items-center justify-center shrink-0">
-                    <i class="fa-solid fa-mobile-screen-button text-base sm:text-lg"></i>
-                  </div>
-                  <div>
-                    <h3 class="text-sm sm:text-base font-bold text-slate-900">Device Fingerprinting</h3>
-                    <p class="text-xs text-slate-500">Flag accounts that show up on too many devices.</p>
-                  </div>
-                </div>
-
-                <div class="space-y-4">
-                  <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Devices Before Flagging</label>
-                    <input type="number" name="device_flag_threshold" min="1" max="50" step="1"
-                           value="<?= e((string) (int) $s['device_flag_threshold']) ?>"
-                           class="w-full px-3.5 py-2 text-xs text-slate-600 rounded-lg border border-slate-200 bg-slate-50/70 focus:outline-none focus:border-indigo-500">
-                    <p class="text-[11px] text-slate-400 mt-1">An account seen on this many distinct devices is flagged for review.</p>
-                  </div>
-
-                  <div class="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
-                    <p class="text-[11px] leading-relaxed text-amber-800">
-                      <i class="fa-solid fa-triangle-exclamation mr-1"></i>
-                      Flagging is advisory only — it never blocks, bans or holds a withdrawal. Telegram's iOS WebView
-                      often produces the same fingerprint for different people, so a match is a review signal, not proof.
-                    </p>
-                  </div>
-
-                  <a href="devices.php" class="flex items-center justify-center gap-2 w-full px-3.5 py-2 rounded-lg border border-[#6d37f7]/30 bg-[#f2edff]/60 text-xs font-semibold text-[#6d37f7] hover:bg-[#f2edff] transition-colors">
-                    <i class="fa-solid fa-list-check text-xs"></i>
-                    View Flagged Accounts
                   </a>
                 </div>
               </div>

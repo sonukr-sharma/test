@@ -22,21 +22,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 }
 
 $initData = '';
-$fingerprintRaw = '';
-$platform = '';
 
 if (!empty($_POST['initData']) && is_string($_POST['initData'])) {
-    $initData       = $_POST['initData'];
-    $fingerprintRaw = isset($_POST['fingerprint']) && is_string($_POST['fingerprint']) ? $_POST['fingerprint'] : '';
-    $platform       = isset($_POST['platform']) && is_string($_POST['platform']) ? $_POST['platform'] : '';
+    $initData = $_POST['initData'];
 } else {
     $raw     = file_get_contents('php://input') ?: '';
     $decoded = json_decode($raw, true);
 
     if (is_array($decoded) && !empty($decoded['initData']) && is_string($decoded['initData'])) {
-        $initData       = $decoded['initData'];
-        $fingerprintRaw = isset($decoded['fingerprint']) && is_string($decoded['fingerprint']) ? $decoded['fingerprint'] : '';
-        $platform       = isset($decoded['platform']) && is_string($decoded['platform']) ? $decoded['platform'] : '';
+        $initData = $decoded['initData'];
     }
 }
 
@@ -60,30 +54,7 @@ session_regenerate_id(true);
 
 $_SESSION['tg_init_data'] = $initData;
 
-// Device fingerprinting runs only after the signature check above, so the
-// Telegram ID it is attached to is genuine. It is advisory: a shared device
-// flags the account for review and never blocks anything.
-//
-// current_user() resolves the Telegram identity to the internal users row
-// (creating it on first login) and returns null for blocked or unregistered
-// users, in which case there is nothing to attach a device to.
-$device = ['device_count' => 0, 'flagged' => false];
-$account = current_user();
-
-if ($account !== null && !empty($account['id'])) {
-    $device = record_user_device(
-        (int) $account['id'],
-        normalise_fingerprint($fingerprintRaw),
-        $platform,
-        (string) ($_SERVER['HTTP_USER_AGENT'] ?? '')
-    );
-}
-
 echo json_encode([
     'ok'      => true,
     'user_id' => (int) $user['id'],
-    'device'  => [
-        'count'   => $device['device_count'],
-        'flagged' => $device['flagged'],
-    ],
 ]);
