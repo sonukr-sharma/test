@@ -330,6 +330,25 @@ CREATE TABLE `required_channels` (
   KEY `idx_required_channels_active` (`is_active`, `sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+
+CREATE TABLE `user_devices` (
+  `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id`     BIGINT UNSIGNED NOT NULL,
+  `device_id`   CHAR(36)        NOT NULL COMMENT 'Random UUID stored in cookie + localStorage + IndexedDB',
+  `fingerprint` CHAR(64)        DEFAULT NULL COMMENT 'SHA-256 of browser/hardware traits (secondary signal)',
+  `ip_address`  VARCHAR(45)     DEFAULT NULL,
+  `user_agent`  VARCHAR(255)    DEFAULT NULL,
+  `first_seen_at` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `last_seen_at`  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_user_device` (`user_id`, `device_id`),
+  KEY `idx_device_id` (`device_id`),
+  KEY `idx_fp_ip` (`fingerprint`, `ip_address`),
+  CONSTRAINT `fk_user_devices_user`
+    FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
 -- =====================================================================
 -- 10. TELEGRAM UPDATES  (webhook/index.php — raw update log)
 -- =====================================================================

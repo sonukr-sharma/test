@@ -96,6 +96,7 @@ function lb_initials(?array $row): string
   <title>Refer & Earn - Leaderboard</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="asset/webapp-auth.js"></script>
+  <script src="asset/device-guard.js"></script>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Font Awesome 6 CDN -->
