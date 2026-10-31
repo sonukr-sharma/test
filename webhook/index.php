@@ -152,6 +152,37 @@ function webhook_webapp_keyboard(): array
     ];
 }
 
+/**
+ * Build the inline keyboard that asks the user to join the required channels
+ * and then verify. One URL button per channel plus a "Verify" callback button.
+ *
+ * @param  list<array<string, mixed>> $channels
+ * @return array<string, mixed>
+ */
+function webhook_channel_gate_keyboard(array $channels): array
+{
+    $rows = [];
+
+    foreach ($channels as $channel) {
+        $url = (string) ($channel['invite_url'] ?? '');
+        if ($url === '') {
+            $url = 'https://t.me/' . ltrim((string) $channel['chat_id'], '@');
+        }
+
+        $rows[] = [[
+            'text' => '📢 Join ' . ((string) ($channel['title'] ?? $channel['chat_id'] ?? 'Channel')),
+            'url'  => $url,
+        ]];
+    }
+
+    $rows[] = [[
+        'text'          => '✅ I\'ve joined — Verify',
+        'callback_data' => 'verify_channels',
+    ]];
+
+    return ['inline_keyboard' => $rows];
+}
+
 /* ---------------------------------------------------------------------
  |  Request handling
  * ------------------------------------------------------------------- */
@@ -202,6 +233,67 @@ if ($text !== '' && str_starts_with($text, '/')) {
 
 // Callback queries (inline button taps) — acknowledge and stop.
 if (isset($update['callback_query'])) {
+    $cq       = $update['callback_query'];
+    $cqData   = (string) ($cq['data'] ?? '');
+    $cqFrom   = is_array($cq['from'] ?? null) ? $cq['from'] : null;
+    $cqTid    = is_array($cqFrom) && isset($cqFrom['id']) ? (int) $cqFrom['id'] : 0;
+    $cqChatId = is_array($cq['message'] ?? null) ? ($cq['message']['chat']['id'] ?? null) : null;
+
+    // "I've joined — Verify" button: re-check membership and reply with the
+    // result. If the user now passes the gate, unlock the app.
+    if ($cqData === 'verify_channels' && $cqTid !== 0) {
+        try {
+            $stmt = db()->prepare('SELECT * FROM `users` WHERE `telegram_id` = :tid LIMIT 1');
+            $stmt->execute([':tid' => $cqTid]);
+            $cqUser = $stmt->fetch();
+
+            if ($cqUser !== false) {
+                $state = channel_membership_status($cqUser);
+
+                if ($state['ok'] && !$state['unknown']) {
+                    $stmt = db()->prepare('UPDATE `users` SET `channels_verified_at` = NOW() WHERE `id` = :id');
+                    $stmt->execute([':id' => $cqUser['id']]);
+
+                    telegram_api('answerCallbackQuery', [
+                        'callback_query_id' => $cq['id'] ?? '',
+                        'text'              => '✅ Verified! You can now open the app.',
+                        'show_alert'        => 'false',
+                    ]);
+
+                    if ($cqChatId !== null) {
+                        telegram_send_message(
+                            $cqChatId,
+                            "🎉 <b>All channels verified!</b>\n\nTap the button below to open the mini app and start earning.",
+                            webhook_webapp_keyboard()
+                        );
+                    }
+                } else {
+                    $missing = $state['missing'] ?: ($state['channels'] ?? []);
+
+                    telegram_api('answerCallbackQuery', [
+                        'callback_query_id' => $cq['id'] ?? '',
+                        'text'              => 'You still need to join the channels.',
+                        'show_alert'        => 'true',
+                    ]);
+
+                    if ($cqChatId !== null) {
+                        telegram_send_message(
+                            $cqChatId,
+                            "🔒 <b>You haven't joined all the required channels yet.</b>\n\n"
+                            . "Please join every channel below, then tap <b>Verify</b> again.",
+                            webhook_channel_gate_keyboard($missing)
+                        );
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('webhook verify_channels callback failed: ' . $e->getMessage());
+        }
+
+        log_update($update, $cqTid, 'callback_query', 'verify_channels', true);
+        webhook_reply(['ok' => true]);
+    }
+
     log_update($update, $telegramId, 'callback_query', null, true);
     telegram_api('answerCallbackQuery', ['callback_query_id' => $update['callback_query']['id'] ?? '']);
     webhook_reply(['ok' => true]);
@@ -314,8 +406,25 @@ try {
 
         $replyText .= "Tap the button below to open the mini app and start earning.";
 
+        // On /start, check whether the user has joined the required channels.
+        // If not, send the join buttons + a Verify button instead of the app.
         if (channel_gate_enabled()) {
-            $replyText .= "\n\n🔒 Join our channels inside the app to unlock your wallet.";
+            $gateState = channel_membership_status($user);
+
+            if (!$gateState['ok']) {
+                $missing = $gateState['missing'] ?: required_channels();
+
+                $replyText = "🔒 <b>Join our channels to unlock Refer & Earn</b>\n\n"
+                    . "Please join every channel below, then tap <b>Verify</b>.\n\n"
+                    . "Once verified, your wallet will be unlocked.";
+
+                telegram_send_message($chatId, $replyText, webhook_channel_gate_keyboard($missing));
+
+                log_update($update, $telegramId, $updateType, $command, true);
+                webhook_reply(['ok' => true]);
+            }
+
+            $replyText .= "\n\n✅ All channels verified — your wallet is unlocked.";
         }
     } elseif ($command === '/balance') {
         $replyText = "💰 Your balance is <b>" . t_format((float) $user['balance_t']) . "</b>\n"
