@@ -123,6 +123,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         : 'Channel gate disabled. The mini app is open to everyone.';
                     break;
 
+                case 'toggle_strict':
+                    $enabled = !empty($_POST['channel_gate_strict']) ? '1' : '0';
+
+                    $stmt = $pdo->prepare(
+                        'INSERT INTO `settings` (`key`, `value`, `data_type`, `group_name`, `label`, `updated_by`)
+                         VALUES (:k, :v, :t, :g, :l, :a)
+                         ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), `updated_by` = VALUES(`updated_by`)'
+                    );
+                    $stmt->execute([
+                        ':k' => 'channel_gate_strict',
+                        ':v' => $enabled,
+                        ':t' => 'boolean',
+                        ':g' => 'gate',
+                        ':l' => 'Block Users When the Channel Check Fails',
+                        ':a' => $admin['id'],
+                    ]);
+
+                    $notice = $enabled === '1'
+                        ? 'Strict mode enabled. Users are blocked when membership cannot be verified.'
+                        : 'Strict mode disabled. Users are let through when membership cannot be verified.';
+                    break;
+
                 default:
                     $error = 'Unknown action.';
             }
@@ -162,6 +184,7 @@ try {
 }
 
 $gateEnabled = (bool) setting('require_channel_join', false);
+$gateStrict  = (bool) setting('channel_gate_strict', false);
 $botStart    = (bool) setting('require_bot_start', true);
 $gateMessage = (string) setting('channel_gate_message', '');
 $activeCount = count(array_filter($channels, static fn ($c) => (int) $c['is_active'] === 1));
@@ -283,6 +306,32 @@ $botReady    = bot_token() !== '';
           <input type="hidden" name="action" value="toggle_gate">
           <label class="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" name="require_channel_join" value="1" <?= $gateEnabled ? 'checked' : '' ?> onchange="this.form.submit()" class="sr-only peer">
+            <div class="w-11 h-6 bg-slate-300 rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#6339f9]"></div>
+          </label>
+        </form>
+      </div>
+
+      <!-- Strict mode -->
+      <div class="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-slate-100 pt-4">
+        <div class="flex items-start gap-3.5">
+          <div class="w-11 h-11 rounded-xl <?= $gateStrict ? 'bg-[#f2edff] text-[#6d37f7]' : 'bg-slate-100 text-slate-400' ?> flex items-center justify-center shrink-0">
+            <i class="fa-solid fa-shield-halved text-lg"></i>
+          </div>
+          <div>
+            <h3 class="text-sm sm:text-base font-bold text-slate-900">Strict Mode</h3>
+            <p class="text-xs text-slate-500 mt-0.5">
+              <?= $gateStrict
+                    ? 'On — users are blocked when membership cannot be verified.'
+                    : 'Off — users are let through when membership cannot be verified.' ?>
+            </p>
+          </div>
+        </div>
+
+        <form method="post" class="flex items-center gap-3 shrink-0">
+          <?= csrf_field() ?>
+          <input type="hidden" name="action" value="toggle_strict">
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" name="channel_gate_strict" value="1" <?= $gateStrict ? 'checked' : '' ?> onchange="this.form.submit()" class="sr-only peer">
             <div class="w-11 h-6 bg-slate-300 rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#6339f9]"></div>
           </label>
         </form>
