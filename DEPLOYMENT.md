@@ -253,6 +253,12 @@ If **Set Webhook** fails:
    `getChatMember` fails and the check is skipped.
 3. Toggle **Require channel join** on when you are ready.
 
+> **Automatic verification:** the webhook now subscribes to `chat_member`
+> updates. When a user joins a required channel, the bot re-checks their
+> membership and unlocks the app automatically — no need to press
+> "I've joined — verify". After changing this, re-register the webhook from
+> `webhook/setup.php` so Telegram starts sending `chat_member` events.
+
 **Admin → Settings → Access Gate**:
 
 | Setting | Meaning |

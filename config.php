@@ -1020,7 +1020,7 @@ function telegram_set_webhook(string $url, ?string $secret = null): array
     $params = [
         'url'                  => $url,
         'max_connections'      => 40,
-        'allowed_updates'      => json_encode(['message', 'callback_query', 'edited_message']),
+        'allowed_updates'      => json_encode(['message', 'callback_query', 'edited_message', 'chat_member']),
         'drop_pending_updates' => 'false',
     ];
 

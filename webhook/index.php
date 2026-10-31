@@ -207,6 +207,53 @@ if (isset($update['callback_query'])) {
     webhook_reply(['ok' => true]);
 }
 
+// chat_member updates — Telegram notifies us when a user joins/leaves one of
+// our channels. This is the automatic "postback" verification: when a user
+// joins a required channel we re-check their membership and, if they now pass
+// the gate, record channels_verified_at so the app unlocks without the user
+// having to press "I've joined — verify".
+if (isset($update['chat_member'])) {
+    $cm = $update['chat_member'];
+
+    // The affected user is in new_chat_member.user; the chat is the channel.
+    $memberFrom = is_array($cm['new_chat_member'] ?? null) ? ($cm['new_chat_member']['user'] ?? null) : null;
+    $memberTid  = is_array($memberFrom) && isset($memberFrom['id']) ? (int) $memberFrom['id'] : 0;
+    $memberChat = is_array($cm['chat'] ?? null) ? ($cm['chat']['id'] ?? null) : null;
+
+    if ($memberTid === 0 || $memberChat === null) {
+        log_update($update, $memberTid, 'chat_member', null, false, 'Missing member user or chat id');
+        webhook_reply(['ok' => true]);
+    }
+
+    // Only act on join events (member/administrator/creator), not leaves.
+    $newStatus = (string) ($cm['new_chat_member']['status'] ?? '');
+    $isJoin    = in_array($newStatus, ['member', 'administrator', 'creator'], true);
+
+    if ($isJoin) {
+        try {
+            $stmt = db()->prepare('SELECT * FROM `users` WHERE `telegram_id` = :tid LIMIT 1');
+            $stmt->execute([':tid' => $memberTid]);
+            $memberUser = $stmt->fetch();
+
+            if ($memberUser !== false) {
+                // Re-run the full membership check; if the user now passes the
+                // gate, mark them verified.
+                $state = channel_membership_status($memberUser);
+
+                if ($state['ok'] && !$state['unknown']) {
+                    $stmt = db()->prepare('UPDATE `users` SET `channels_verified_at` = NOW() WHERE `id` = :id');
+                    $stmt->execute([':id' => $memberUser['id']]);
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('webhook chat_member handler failed: ' . $e->getMessage());
+        }
+    }
+
+    log_update($update, $memberTid, 'chat_member', null, true);
+    webhook_reply(['ok' => true]);
+}
+
 if (!is_array($from) || $chatId === null) {
     log_update($update, $telegramId, $updateType, $command, false, 'No sender or chat id');
     webhook_reply(['ok' => true, 'skipped' => 'no sender']);
