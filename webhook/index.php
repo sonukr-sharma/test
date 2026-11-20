@@ -233,14 +233,17 @@ if (isset($update['callback_query'])) {
     $cqData   = (string) ($cq['data'] ?? '');
     $cqFrom   = is_array($cq['from'] ?? null) ? $cq['from'] : null;
     $cqTid    = is_array($cqFrom) && isset($cqFrom['id']) ? (int) $cqFrom['id'] : 0;
-    $cqChatId = is_array($cq['message'] ?? null) ? ($cq['message']['chat']['id'] ?? null) : null;
+    $cqMessage = is_array($cq['message'] ?? null) ? $cq['message'] : [];
+    $cqChat = is_array($cqMessage['chat'] ?? null) ? $cqMessage['chat'] : [];
+    $cqChatId = $cqChat['id'] ?? null;
+    $cqChatUsername = (string) ($cqChat['username'] ?? '');
 
     if (preg_match('/^withdrawal:(paid|failed):([1-9][0-9]*)$/', $cqData, $withdrawalAction) === 1) {
         $action = $withdrawalAction[1];
         $withdrawalId = (int) $withdrawalAction[2];
-        $authorizedIds = withdrawal_action_admin_ids();
 
-        if ($cqTid <= 0 || !in_array((string) $cqTid, $authorizedIds, true)) {
+        if ($cqTid <= 0 || $cqChatId === null
+            || !withdrawal_chat_is_authorized($cqChatId, $cqChatUsername)) {
             telegram_api('answerCallbackQuery', [
                 'callback_query_id' => $cq['id'] ?? '',
                 'text' => 'You are not authorized to update withdrawals.',
@@ -257,19 +260,30 @@ if (isset($update['callback_query'])) {
             'show_alert' => $result['ok'] ? 'false' : 'true',
         ]);
 
-        if ($result['ok'] && is_array($cq['message'] ?? null) && $cqChatId !== null) {
+        $terminalWithdrawalStatuses = ['completed', 'rejected', 'cancelled'];
+        if (($result['ok'] || in_array($result['status'], $terminalWithdrawalStatuses, true))
+            && is_array($cq['message'] ?? null)
+            && $cqChatId !== null) {
             $message = $cq['message'];
             $messageId = $message['message_id'] ?? null;
             $messageText = (string) ($message['text'] ?? '');
             if ($messageId !== null && $messageText !== '') {
-                $statusLine = $result['status'] === 'completed'
-                    ? '✅ Status: Marked as Paid'
-                    : '❌ Status: Rejected & Refunded';
+                $messageText = preg_replace(
+                    '/\n\n(?:✅ Status: Marked as Paid|❌ Status: Rejected & Refunded|⏹ Status: Cancelled)$/u',
+                    '',
+                    $messageText
+                ) ?? $messageText;
+                if ($result['status'] === 'completed') {
+                    $statusLine = '✅ Status: Marked as Paid';
+                } elseif ($result['status'] === 'rejected') {
+                    $statusLine = '❌ Status: Rejected & Refunded';
+                } else {
+                    $statusLine = '⏹ Status: Cancelled';
+                }
                 $editParams = [
                     'chat_id' => $cqChatId,
                     'message_id' => $messageId,
                     'text' => $messageText . "\n\n" . $statusLine,
-                    'reply_markup' => json_encode(['inline_keyboard' => []]),
                 ];
                 if (is_array($message['entities'] ?? null) && $message['entities'] !== []) {
                     $editParams['entities'] = json_encode($message['entities']);

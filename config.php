@@ -290,7 +290,6 @@ function default_settings(): array
         // Withdrawal
         'withdrawal_mode'              => 'manual',
         'withdrawal_manual_chat_ids'   => '',
-        'withdrawal_action_admin_ids' => '',
         // Optional automatic payout gateway; blank means "not configured".
         'withdrawal_api_url'           => '',
         'coin_to_inr_rate'             => 0.10,
@@ -1124,27 +1123,26 @@ function withdrawal_manual_chat_ids(): array
 }
 
 /**
- * Telegram user IDs allowed to confirm or fail manual withdrawal payouts.
- *
- * @return list<string>
+ * Whether a Telegram notification destination may act on its withdrawal buttons.
  */
-function withdrawal_action_admin_ids(): array
+function withdrawal_chat_is_authorized(int|string $messageChatId, string $messageChatUsername = ''): bool
 {
-    $raw = (string) setting('withdrawal_action_admin_ids', '');
-    $parts = array_merge(
-        preg_split('/[\r\n,]+/', $raw) ?: [],
-        withdrawal_manual_chat_ids()
-    );
-    $userIds = [];
+    $messageChatId = (string) $messageChatId;
+    $messageChatUsername = ltrim(trim($messageChatUsername), '@');
 
-    foreach ($parts as $part) {
-        $userId = trim($part);
-        if (preg_match('/^[1-9][0-9]{0,15}$/', $userId) === 1 && !in_array($userId, $userIds, true)) {
-            $userIds[] = $userId;
+    foreach (withdrawal_manual_chat_ids() as $configuredChatId) {
+        if ($configuredChatId === $messageChatId) {
+            return true;
+        }
+
+        if (str_starts_with($configuredChatId, '@')
+            && $messageChatUsername !== ''
+            && strcasecmp(substr($configuredChatId, 1), $messageChatUsername) === 0) {
+            return true;
         }
     }
 
-    return $userIds;
+    return false;
 }
 
 /**

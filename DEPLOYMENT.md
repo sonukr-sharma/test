@@ -273,15 +273,12 @@ Referral requirements continue to apply in both modes.
 
 - **Manual:** the user's first request remains pending for manual payment. The
   bot sends it to the configured Telegram chat IDs; the bot must be able to message
-  each user, group, or channel. Add trusted Telegram user IDs to the authorized
-  admin list to authorize the notification's green **Mark as Paid** and
-  red **Reject & Refund** buttons. Both buttons appear on every alert. Personal
-  user IDs configured as private-chat destinations are authorized automatically;
-  for group or channel notifications, add trusted personal user IDs to the
-  authorized admin list. Group and channel IDs cannot authorize actions. A
-  successful action completes the withdrawal; a failed action rejects it and
-  refunds the held balance. The web admin withdrawal dashboard remains
-  available as well.
+  each user, group, or channel. Every configured notification destination is
+  authorized to use the green **Mark as Paid** and red **Reject & Refund**
+  buttons; in groups and channels, anyone who can access the message can use
+  them. Both buttons appear on every alert. A successful action completes the
+  withdrawal; a failed action rejects it and refunds the held balance. The web
+  admin withdrawal dashboard remains available as well.
 - **Auto:** the user's first valid request is sent immediately to
   `withdrawal_api_url`. There is no approval step. A successful gateway response
   completes the withdrawal; a failed or unavailable gateway leaves it pending

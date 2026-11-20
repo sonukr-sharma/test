@@ -440,7 +440,6 @@ INSERT INTO `settings` (`key`, `value`, `data_type`, `group_name`, `label`) VALU
     ('min_referrals_subsequent_withdrawal', '20',                'integer', 'referral',  'Minimum Referrals for Every Withdrawal After the 1st'),
   ('withdrawal_mode',          'manual',                       'string',  'withdrawal','Withdrawal Mode: manual or auto'),
   ('withdrawal_manual_chat_ids','',                            'string',  'withdrawal','Telegram chats notified about manual withdrawals'),
-  ('withdrawal_action_admin_ids','',                           'string',  'withdrawal','Telegram user IDs authorized to update manual withdrawal status'),
   ('withdrawal_api_url',       '',                             'url',     'withdrawal','Automatic withdrawal gateway URL'),
   ('coin_to_inr_rate',         '0.10',                         'decimal', 'withdrawal','Conversion rate: 1 T in ₹'),
   ('withdrawal_processing_hours', '24',                        'integer', 'withdrawal','Processing time shown to users (hours)'),

@@ -61,7 +61,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ],
             'withdrawal_notifications' => [
                 'withdrawal_manual_chat_ids' => 'string',
-                'withdrawal_action_admin_ids' => 'string',
             ],
             'bot' => [
                 'bot_token' => 'secret',
@@ -80,7 +79,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $manualChatIdsValue = '';
-        $actionAdminIdsValue = '';
         if ($error === null && $section === 'withdrawal_notifications') {
             $rawChatIds = (string) ($_POST['withdrawal_manual_chat_ids'] ?? '');
             $chatIds = preg_split('/[\r\n,]+/', $rawChatIds) ?: [];
@@ -99,26 +97,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             $manualChatIdsValue = implode("\n", $normalizedChatIds);
-
-            if ($error === null) {
-                $rawActionAdminIds = (string) ($_POST['withdrawal_action_admin_ids'] ?? '');
-                $actionAdminIds = preg_split('/[\r\n,]+/', $rawActionAdminIds) ?: [];
-                $normalizedActionAdminIds = [];
-                foreach ($actionAdminIds as $telegramUserId) {
-                    $telegramUserId = trim($telegramUserId);
-                    if ($telegramUserId === '') {
-                        continue;
-                    }
-                    if (preg_match('/^[1-9][0-9]{0,15}$/', $telegramUserId) !== 1) {
-                        $error = 'Authorized Telegram admin IDs must be positive numeric user IDs.';
-                        break;
-                    }
-                    if (!in_array($telegramUserId, $normalizedActionAdminIds, true)) {
-                        $normalizedActionAdminIds[] = $telegramUserId;
-                    }
-                }
-                $actionAdminIdsValue = implode("\n", $normalizedActionAdminIds);
-            }
         }
 
         $submittedBotToken = trim((string) ($_POST['bot_token'] ?? ''));
@@ -147,7 +125,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'withdrawal_processing_hours' => 'withdrawal',
                 'withdrawal_api_url' => 'withdrawal',
                 'withdrawal_manual_chat_ids' => 'withdrawal',
-                'withdrawal_action_admin_ids' => 'withdrawal',
                 'bot_token' => 'bot',
                 'bot_web_app_url' => 'bot',
             ];
@@ -174,8 +151,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $value = $submittedWithdrawalMode;
                     } elseif ($key === 'withdrawal_manual_chat_ids') {
                         $value = $manualChatIdsValue;
-                    } elseif ($key === 'withdrawal_action_admin_ids') {
-                        $value = $actionAdminIdsValue;
                     } else {
                         // Skip fields that are not rendered on the page so we never blank them out.
                         if (!array_key_exists($key, $_POST)) {
@@ -599,10 +574,7 @@ $withdrawalMode = in_array($s['withdrawal_mode'], ['manual', 'auto'], true)
             </div>
             <label class="block text-xs font-medium text-slate-700 mb-1.5">Telegram Chat IDs</label>
             <textarea id="withdrawalManualChatIds" name="withdrawal_manual_chat_ids" aria-label="Telegram Chat IDs" placeholder="Add a chat ID or @channel, then press Enter"><?= e((string) $s['withdrawal_manual_chat_ids']) ?></textarea>
-            <p class="mt-1 text-[11px] leading-relaxed text-slate-400">Add user, group, or channel IDs as tags. Numeric IDs and public @channel usernames are accepted. The bot must be able to message each destination.</p>
-            <label class="block text-xs font-medium text-slate-700 mt-4 mb-1.5">Authorized Telegram Admin User IDs</label>
-            <textarea id="withdrawalActionAdminIds" name="withdrawal_action_admin_ids" aria-label="Authorized Telegram Admin User IDs" placeholder="Add a Telegram user ID, then press Enter"><?= e((string) $s['withdrawal_action_admin_ids']) ?></textarea>
-            <p class="mt-1 text-[11px] leading-relaxed text-slate-400">Every notification includes the payment buttons. Personal user IDs listed as private-chat destinations above are authorized automatically; add other personal Telegram user IDs here for group or channel notifications. Group and channel IDs cannot authorize button actions.</p>
+            <p class="mt-1 text-[11px] leading-relaxed text-slate-400">Add user, group, or channel IDs as tags. Numeric IDs and public @channel usernames are accepted. The bot must be able to message each destination. Anyone who can access a listed group or channel can use its payment buttons.</p>
           </div>
           <div class="mt-5 flex justify-end">
             <button type="submit" class="w-full justify-center bg-gradient-to-r from-[#6c3cf7] to-[#5a29e4] hover:opacity-95 text-white font-medium text-xs px-5 py-3 sm:py-2.5 rounded-xl shadow-md shadow-indigo-500/25 flex items-center gap-2 transition">
