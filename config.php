@@ -288,10 +288,9 @@ function default_settings(): array
                 'min_referrals_subsequent_withdrawal' => 20,
 
         // Withdrawal
-        'min_withdrawal_t'             => 2000.0,
-        'max_withdrawal_t'             => 50000.0,
-        'auto_approve_withdrawals'     => false,
-        // Optional external payout hook; blank means "not configured".
+        'withdrawal_mode'              => 'manual',
+        'withdrawal_manual_chat_ids'   => '',
+        // Optional automatic payout gateway; blank means "not configured".
         'withdrawal_api_url'           => '',
         'coin_to_inr_rate'             => 0.10,
         'withdrawal_processing_hours'  => 24,
@@ -307,7 +306,6 @@ function default_settings(): array
         'enable_signup_bonus'          => true,
 
         // Platform
-        'allow_registration'           => true,
         'withdrawals_enabled'          => true,
 
         // Channel gate
@@ -356,8 +354,19 @@ function settings(bool $refresh = false): array
             ->query('SELECT `key`, `value`, `data_type` FROM `settings`')
             ->fetchAll();
 
+        $hasWithdrawalMode = false;
+        $legacyAutoApprove = null;
         foreach ($rows as $row) {
             $cache[$row['key']] = cast_setting($row['value'], (string) $row['data_type']);
+            if ($row['key'] === 'withdrawal_mode') {
+                $hasWithdrawalMode = true;
+            } elseif ($row['key'] === 'auto_approve_withdrawals') {
+                $legacyAutoApprove = cast_setting($row['value'], (string) $row['data_type']);
+            }
+        }
+
+        if (!$hasWithdrawalMode && $legacyAutoApprove !== null) {
+            $cache['withdrawal_mode'] = $legacyAutoApprove ? 'auto' : 'manual';
         }
     } catch (Throwable $e) {
         error_log('Settings load failed, using defaults: ' . $e->getMessage());
@@ -443,19 +452,6 @@ function user_withdrawal_count(int $userId): int
 function is_first_withdrawal(int $userId): bool
 {
     return user_withdrawal_count($userId) === 0;
-}
-
-/**
- * The cap applied to a user's first withdrawal.
- *
- * The first payout is deliberately small: it is limited to the configured
- * minimum withdrawal amount, so a brand-new account can cash out once without
- * the platform risking a large payout on an unproven account. Every later
- * withdrawal is only bounded by `max_withdrawal_t`.
- */
-function first_withdrawal_max_t(): float
-{
-    return (float) setting('min_withdrawal_t', 2000);
 }
 
 /**
@@ -612,12 +608,8 @@ function withdrawal_stored_inr(int $withdrawalId, float $amountT): float
  * Runs after the withdrawal row has been committed so a slow payout endpoint
  * never holds the wallet row lock.
  *
- * Two callers use this:
- *  - `auto`   — the first-withdrawal auto-payout in withdraw.php. A failed
- *               payout leaves the request `pending` for the admin queue.
- *  - `manual` — an admin approving the request. The admin's decision stands,
- *               so a failed payout keeps the `completed` status and records
- *               the reason in `admin_note` for follow-up.
+ * The gateway is called for every request in Auto mode. A failed payout leaves
+ * the request pending for manual follow-up; it is never marked paid on error.
  *
  * `$amountT` is the T-coin amount stored on the withdrawal row. The rupee value
  * sent to the payout API is the `amount_inr` frozen on the row when the user
@@ -630,24 +622,18 @@ function withdrawal_stored_inr(int $withdrawalId, float $amountT): float
 function process_withdrawal_payout(
     int $withdrawalId,
     float $amountT,
-    string $upiId,
-    string $mode = 'auto',
-    ?int $adminId = null
+    string $upiId
 ): array {
-    $isManual = $mode === 'manual';
     $amountInr = withdrawal_stored_inr($withdrawalId, $amountT);
-    $label    = $isManual ? 'Withdrawal #' . $withdrawalId : 'Your first withdrawal of ' . t_format($amountT);
+    $label = 'Withdrawal #' . $withdrawalId;
 
     if (withdrawal_api_url() === '') {
-        // A blank URL is a deliberate configuration, not a failure.
         return [
-            'status'         => $isManual ? 'completed' : 'pending',
-            'message'        => $isManual
-                ? 'Withdrawal #' . $withdrawalId . ' approved.'
-                : $label . ' is queued for review.',
-            'ok'             => $isManual,
+            'status'         => 'pending',
+            'message'        => $label . ' remains pending because the automatic payout gateway is not configured.',
+            'ok'             => false,
             'transaction_id' => null,
-            'error'          => $isManual ? null : 'Withdrawal API is not configured.',
+            'error'          => 'Automatic payout gateway is not configured.',
         ];
     }
 
@@ -661,25 +647,22 @@ function process_withdrawal_payout(
         $stmt->execute([':id' => $withdrawalId]);
         $current = $stmt->fetchColumn();
 
-        // A manual approval has already moved the row to `completed`.
-        $allowedFrom = $isManual ? ['pending', 'processing', 'completed'] : ['pending'];
-
-        if ($current === false || !in_array((string) $current, $allowedFrom, true)) {
+        if ($current === false || (string) $current !== 'pending') {
             $pdo->rollBack();
 
             return [
                 'status'         => (string) $current,
-                'message'        => $label . ' is already being processed.',
+                'message'        => $label . ' is no longer pending and was not sent to the gateway.',
                 'ok'             => false,
                 'transaction_id' => null,
                 'error'          => 'Unexpected status: ' . (string) $current,
             ];
         }
 
-        $newStatus = $result['ok'] || $isManual ? 'completed' : 'pending';
+        $newStatus = $result['ok'] ? 'completed' : 'pending';
 
         $note = $result['ok'] ? null : mb_substr(
-            ($isManual ? 'Manual payout failed: ' : 'Auto-payout failed: ') . (string) $result['error'],
+            'Auto-payout failed: ' . (string) $result['error'],
             0,
             500
         );
@@ -698,7 +681,7 @@ function process_withdrawal_payout(
             ':txid'      => $result['transaction_id'],
             ':response'  => json_encode($result['response'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             ':note'      => $note,
-            ':processed' => $result['ok'] || $isManual ? date('Y-m-d H:i:s') : null,
+            ':processed' => $result['ok'] ? date('Y-m-d H:i:s') : null,
             ':id'        => $withdrawalId,
         ]);
 
@@ -712,11 +695,9 @@ function process_withdrawal_payout(
                 ':wid'   => $withdrawalId,
                 ':from'  => (string) $current,
                 ':to'    => 'completed',
-                ':note'  => ($isManual
-                        ? 'Paid out via withdrawal API after admin approval'
-                        : 'Auto-paid via withdrawal API')
+                ':note'  => 'Auto-paid via configured withdrawal gateway'
                     . ($result['transaction_id'] !== null ? ' (txid ' . $result['transaction_id'] . ')' : ''),
-                ':admin' => $adminId,
+                ':admin' => null,
             ]);
         }
 
@@ -725,9 +706,8 @@ function process_withdrawal_payout(
              VALUES (:admin, :action, :entity_type, :entity_id, :meta, :ip)'
         );
         $audit->execute([
-            ':admin'       => $adminId,
-            ':action'      => ($isManual ? 'withdrawal.manual_payout' : 'withdrawal.auto_payout')
-                . ($result['ok'] ? '' : '_failed'),
+            ':admin'       => null,
+            ':action'      => 'withdrawal.auto_payout' . ($result['ok'] ? '' : '_failed'),
             ':entity_type' => 'withdrawal',
             ':entity_id'   => $withdrawalId,
             ':meta'        => json_encode([
@@ -748,10 +728,8 @@ function process_withdrawal_payout(
         error_log('process_withdrawal_payout failed: ' . $e->getMessage());
 
         return [
-            'status'         => $isManual ? 'completed' : 'pending',
-            'message'        => $isManual
-                ? 'Withdrawal #' . $withdrawalId . ' approved, but the payout could not be recorded.'
-                : $label . ' is queued for review.',
+            'status'         => 'pending',
+            'message'        => $label . ' could not be recorded after the gateway call and remains pending for manual follow-up.',
             'ok'             => false,
             'transaction_id' => null,
             'error'          => $e->getMessage(),
@@ -761,38 +739,22 @@ function process_withdrawal_payout(
     if ($result['ok']) {
         return [
             'status'         => 'completed',
-            'message'        => $isManual
-                ? 'Withdrawal #' . $withdrawalId . ' approved and paid out via the API.'
-                : $label . ' was paid out automatically.',
+            'message'        => $label . ' was paid automatically.',
             'ok'             => true,
             'transaction_id' => $result['transaction_id'],
             'error'          => null,
         ];
     }
 
-    error_log('Withdrawal #' . $withdrawalId . ' ' . $mode . ' payout failed: ' . (string) $result['error']);
+    error_log('Withdrawal #' . $withdrawalId . ' automatic payout failed: ' . (string) $result['error']);
 
     return [
-        'status'         => $isManual ? 'completed' : 'pending',
-        'message'        => $isManual
-            ? 'Withdrawal #' . $withdrawalId . ' approved, but the payout API failed: ' . (string) $result['error']
-            : $label . ' is queued for review.',
+        'status'         => 'pending',
+        'message'        => $label . ' could not be paid automatically and remains pending for manual follow-up.',
         'ok'             => false,
         'transaction_id' => null,
         'error'          => $result['error'],
     ];
-}
-
-/**
- * Pay out a first withdrawal immediately through the configured API.
- *
- * @return array{status: string, message: string}
- */
-function process_first_withdrawal_payout(int $withdrawalId, float $amountT, string $upiId): array
-{
-    $result = process_withdrawal_payout($withdrawalId, $amountT, $upiId, 'auto');
-
-    return ['status' => $result['status'], 'message' => $result['message']];
 }
 
 /* ---------------------------------------------------------------------
@@ -970,11 +932,12 @@ function telegram_api_base(): string
  * Call a Telegram Bot API method.
  *
  * @param  array<string, mixed> $params
+ * @param  string|null $tokenOverride Optional token used to validate a new bot before saving it.
  * @return array{ok: bool, result?: mixed, description?: string, error?: string}
  */
-function telegram_api(string $method, array $params = [], int $timeout = 15): array
+function telegram_api(string $method, array $params = [], int $timeout = 15, ?string $tokenOverride = null): array
 {
-    $token = bot_token();
+    $token = $tokenOverride !== null ? trim($tokenOverride) : bot_token();
 
     if ($token === '') {
         return ['ok' => false, 'error' => 'Bot token is not configured.'];
@@ -1139,6 +1102,72 @@ function telegram_send_message(int|string $chatId, string $text, ?array $replyMa
     }
 
     return telegram_api('sendMessage', $params);
+}
+
+/**
+ * Configured Telegram destinations for manual withdrawal notifications.
+ *
+ * @return list<string>
+ */
+function withdrawal_manual_chat_ids(): array
+{
+    $raw = (string) setting('withdrawal_manual_chat_ids', '');
+    $parts = preg_split('/[\r\n,]+/', $raw) ?: [];
+    $chatIds = [];
+
+    foreach ($parts as $part) {
+        $chatId = trim($part);
+        if ($chatId !== '' && !in_array($chatId, $chatIds, true)) {
+            $chatIds[] = $chatId;
+        }
+    }
+
+    return $chatIds;
+}
+
+/**
+ * Notify configured Telegram chats about a newly submitted manual withdrawal.
+ *
+ * @param array<string, mixed> $user
+ * @return array{configured: bool, sent: int, failures: list<string>}
+ */
+function notify_manual_withdrawal(
+    array $user,
+    int $withdrawalId,
+    float $amountT,
+    float $amountInr,
+    string $upiId
+): array {
+    $chatIds = withdrawal_manual_chat_ids();
+    if ($chatIds === []) {
+        return ['configured' => false, 'sent' => 0, 'failures' => []];
+    }
+
+    $username = trim((string) ($user['username'] ?? ''));
+    $telegramId = trim((string) ($user['telegram_id'] ?? ''));
+    $text = implode("\n", [
+        '<b>Manual withdrawal request #' . $withdrawalId . '</b>',
+        'User: ' . e($username !== '' ? '@' . $username : 'Unknown'),
+        'Telegram ID: ' . e($telegramId !== '' ? $telegramId : 'Unavailable'),
+        'Amount: ' . e(inr_format($amountInr)) . ' (' . e(t_format($amountT)) . ')',
+        'UPI ID: ' . e($upiId),
+    ]);
+
+    $sent = 0;
+    $failures = [];
+    foreach ($chatIds as $chatId) {
+        $response = telegram_send_message($chatId, $text);
+        if (($response['ok'] ?? false) === true) {
+            $sent++;
+            continue;
+        }
+
+        $reason = (string) ($response['description'] ?? $response['error'] ?? 'Telegram rejected the message.');
+        error_log('Manual withdrawal notification failed for chat ' . $chatId . ': ' . $reason);
+        $failures[] = 'Chat ' . $chatId . ': ' . $reason;
+    }
+
+    return ['configured' => true, 'sent' => $sent, 'failures' => $failures];
 }
 
 /**
@@ -1910,10 +1939,6 @@ function generate_referral_code(string $seed = ''): string
  */
 function create_user_from_telegram(array $identity): array|false
 {
-    if (!setting('allow_registration', true)) {
-        return false;
-    }
-
     $telegramId = (int) ($identity['id'] ?? 0);
 
     if ($telegramId === 0) {

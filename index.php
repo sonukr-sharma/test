@@ -6,7 +6,6 @@ require_once __DIR__ . '/config.php';
 $user = require_onboarded_user();
 
 $rewardPerReferral = (float) setting('referral_reward_t', 150);
-$minWithdrawalT    = (float) setting('min_withdrawal_t', 2000);
 $balanceT          = (float) $user['balance_t'];
 $totalEarnedT      = (float) $user['total_earned_t'];
 $referralCount     = (int) $user['referral_count'];
@@ -146,11 +145,11 @@ $flash = flash_get();
                     </a>
         </div>
 
-        <!-- Minimum Cashout Bar -->
+        <!-- Withdrawal Amount Options -->
         <div class="mt-4 bg-[#f5f3ff] rounded-xl px-3 py-2.5 flex items-center justify-between text-xs">
           <div class="flex items-center gap-1.5">
-            <i class="fa-solid fa-crown text-amber-400 text-sm"></i>
-            <span class="text-slate-600 font-medium">Minimum cashout: <strong class="text-[#5925dc] font-bold"><?= e(t_format($minWithdrawalT)) ?> (<?= e(inr_format(t_to_inr($minWithdrawalT))) ?>)</strong></span>
+            <i class="fa-solid fa-circle-info text-[#5925dc] text-sm"></i>
+            <span class="text-slate-600 font-medium">Withdraw ₹10, ₹50, or ₹100</span>
           </div>
           <a href="#" class="text-[#5925dc] font-bold flex items-center gap-1 hover:underline">
             <span>How it works?</span>

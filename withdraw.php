@@ -6,79 +6,49 @@ require_once __DIR__ . '/config.php';
 $user = require_onboarded_user();
 
 $withdrawalsEnabled = (bool) setting('withdrawals_enabled', true);
-$minWithdrawalT     = (float) setting('min_withdrawal_t', 2000);
-$maxWithdrawalT     = (float) setting('max_withdrawal_t', 50000);
 $minReferrals       = (int) setting('min_referrals_withdrawal', 5);
 $minReferralsSubseq = (int) setting('min_referrals_subsequent_withdrawal', 20);
 $processingHours    = (int) setting('withdrawal_processing_hours', 24);
+$coinToInrRate      = (float) setting('coin_to_inr_rate', 0.10);
 $balanceT           = (float) $user['balance_t'];
 $referralCount      = (int) $user['referral_count'];
 
-// The first payout is capped at the minimum amount and paid out automatically;
-// later ones are only bounded by max_withdrawal_t.
-$isFirstWithdrawal  = is_first_withdrawal((int) $user['id']);
-$firstWithdrawalMax = first_withdrawal_max_t();
-$effectiveMinT      = $isFirstWithdrawal ? 1.0 : $minWithdrawalT;
-$effectiveMaxT      = $isFirstWithdrawal ? $firstWithdrawalMax : $maxWithdrawalT;
-
-// Referral requirement: the 1st withdrawal needs min_referrals_withdrawal;
-// every later withdrawal needs min_referrals_subsequent_withdrawal.
-$referralsRequired  = $isFirstWithdrawal ? $minReferrals : $minReferralsSubseq;
-
-/**
- * Build the quick-pick amount chips: the minimum, two random values rounded to
- * the nearest 100, then the maximum.
- *
- * The top chip is capped at the user's balance, because a chip that always
- * fails the balance check is useless.
- *
- * @return list<int>
- */
-function withdrawal_amount_chips(float $minT, float $maxT, float $balanceT): array
-{
-    $min = (int) ceil($minT);
-    $max = (int) floor(min($maxT, $balanceT));
-
-    if ($max < $min) {
-        return [];
-    }
-
-    if ($max === $min) {
-        return [$min];
-    }
-
-    $chips = [$min];
-
-    // Two random values strictly between the bounds, rounded to 100.
-    if ($max - $min >= 300) {
-        $picks = [];
-        for ($attempt = 0; $attempt < 40 && count($picks) < 2; $attempt++) {
-            $value = (int) (round(random_int($min + 1, $max - 1) / 100) * 100);
-            if ($value > $min && $value < $max && !in_array($value, $picks, true)) {
-                $picks[] = $value;
-            }
+$withdrawalOptionsInr = [10, 50, 100];
+$withdrawalAmountsT = [];
+if ($coinToInrRate > 0 && is_finite($coinToInrRate)) {
+    foreach ($withdrawalOptionsInr as $amountInr) {
+        $amountT = round($amountInr / $coinToInrRate, 2);
+        $convertedInrPaise = (int) round($amountT * $coinToInrRate * 100);
+        if ($convertedInrPaise === $amountInr * 100) {
+            $withdrawalAmountsT[$amountInr] = $amountT;
         }
-        sort($picks);
-        $chips = array_merge($chips, $picks);
     }
-
-    $chips[] = $max;
-
-    return array_values(array_unique($chips));
 }
 
-$amountChips = withdrawal_amount_chips($effectiveMinT, $effectiveMaxT, $balanceT);
-$defaultAmount = $amountChips !== [] ? $amountChips[0] : (int) ceil($effectiveMinT);
-$canWithdraw = $amountChips !== [];
+$isFirstWithdrawal  = is_first_withdrawal((int) $user['id']);
+
+$referralsRequired  = $isFirstWithdrawal ? $minReferrals : $minReferralsSubseq;
+$availableWithdrawalsInr = [];
+foreach ($withdrawalOptionsInr as $amountInr) {
+    if (isset($withdrawalAmountsT[$amountInr]) && $withdrawalAmountsT[$amountInr] <= $balanceT) {
+        $availableWithdrawalsInr[] = $amountInr;
+    }
+}
+$defaultAmountInr = $availableWithdrawalsInr[0] ?? $withdrawalOptionsInr[0];
+$canWithdraw = $availableWithdrawalsInr !== [];
 
 $formError = null;
 $formUpi   = '';
-$formAmount = $defaultAmount;
+$formAmountInr = $defaultAmountInr;
+$formAmountT = $withdrawalAmountsT[$formAmountInr] ?? 0.0;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $formUpi = trim((string) ($_POST['upi_id'] ?? ''));
-    $amount  = (float) ($_POST['amount'] ?? 0);
-    $formAmount = (int) $amount;
+    $submittedAmountInr = filter_var($_POST['amount_inr'] ?? '', FILTER_VALIDATE_INT);
+    if ($submittedAmountInr !== false && in_array($submittedAmountInr, $withdrawalOptionsInr, true)) {
+        $formAmountInr = $submittedAmountInr;
+    }
+    $formAmountT = $withdrawalAmountsT[$formAmountInr] ?? 0.0;
 
     if (!csrf_verify($_POST['csrf_token'] ?? null)) {
         $formError = 'Your session expired. Please try again.';
@@ -86,19 +56,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $formError = 'Withdrawals are temporarily disabled.';
     } elseif ($referralCount < $referralsRequired) {
         $formError = sprintf('You need at least %d referrals to withdraw.', $referralsRequired);
+    } elseif ($submittedAmountInr === false || !in_array($submittedAmountInr, $withdrawalOptionsInr, true)) {
+        $formError = 'Choose a withdrawal amount of ₹10, ₹50, or ₹100.';
+    } elseif ($coinToInrRate <= 0 || !is_finite($coinToInrRate)) {
+        $formError = 'Withdrawals are unavailable because the conversion rate is invalid.';
+    } elseif (setting('withdrawal_mode', 'manual') === 'auto' && withdrawal_api_url() === '') {
+        $formError = 'Auto withdrawals are unavailable because the payout gateway is not configured.';
+    } elseif (!array_key_exists($submittedAmountInr, $withdrawalAmountsT)) {
+        $formError = 'This withdrawal amount cannot be represented at the current conversion rate.';
     } elseif (preg_match('/^[\w.\-]{2,}@[a-zA-Z]{2,}$/', $formUpi) !== 1) {
         $formError = 'Please enter a valid UPI ID (e.g. yourname@upi).';
-    } elseif ($amount <= 0) {
-        $formError = 'Please enter the amount you want to withdraw.';
-    } elseif ($isFirstWithdrawal && $amount > $firstWithdrawalMax) {
-        $formError = 'Your first withdrawal is limited to ' . t_format($firstWithdrawalMax) . '.';
-    } elseif (!$isFirstWithdrawal && $amount < $minWithdrawalT) {
-        $formError = 'Minimum withdrawal is ' . t_format($minWithdrawalT) . '.';
-    } elseif ($amount > $effectiveMaxT) {
-        $formError = 'Maximum withdrawal is ' . t_format($effectiveMaxT) . '.';
-    } elseif ($amount > $balanceT) {
+    } elseif ($formAmountT > $balanceT) {
         $formError = 'Insufficient balance. You have ' . t_format($balanceT) . '.';
     } else {
+        $amountInr = (int) $submittedAmountInr;
+        $amountT = $withdrawalAmountsT[$amountInr];
         $pdo = db();
 
         try {
@@ -108,21 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([':id' => $user['id']]);
             $lockedBalance = (float) $stmt->fetchColumn();
 
-            if ($amount > $lockedBalance) {
+            if ($amountT > $lockedBalance) {
                 throw new RuntimeException('Insufficient balance.');
-            }
-
-            // Re-check under the row lock so two concurrent submissions cannot
-            // both claim the first-withdrawal allowance.
-            $stmt = $pdo->prepare(
-                "SELECT COUNT(*) FROM `withdrawals`
-                  WHERE `user_id` = :uid AND `status` NOT IN ('cancelled', 'rejected')"
-            );
-            $stmt->execute([':uid' => $user['id']]);
-            $lockedIsFirst = (int) $stmt->fetchColumn() === 0;
-
-            if ($lockedIsFirst && $amount > $firstWithdrawalMax) {
-                throw new RuntimeException('Your first withdrawal is limited to ' . t_format($firstWithdrawalMax) . '.');
             }
 
             $stmt = $pdo->prepare(
@@ -132,8 +91,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $stmt->execute([
                 ':uid'    => $user['id'],
-                ':amt'    => $amount,
-                ':inr'    => t_to_inr($amount),
+                ':amt'    => $amountT,
+                ':inr'    => $amountInr,
                 ':method' => 'upi',
                 ':upi'    => $formUpi,
                 ':status' => 'pending',
@@ -149,16 +108,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([
                 ':wid'  => $withdrawalId,
                 ':to'   => 'pending',
-                ':note' => $lockedIsFirst
-                    ? 'First withdrawal requested by user via mini app (auto-payout).'
-                    : 'Requested by user via mini app.',
+                ':note' => 'Requested by user via mini app.',
             ]);
 
             credit_wallet(
                 (int) $user['id'],
                 'withdrawal_debit',
                 'debit',
-                $amount,
+                $amountT,
                 'withdrawal',
                 $withdrawalId,
                 'Withdrawal request to ' . $formUpi
@@ -166,13 +123,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
-            // The payout call happens after the commit so a slow endpoint never
-            // holds the wallet row lock.
-            if ($lockedIsFirst) {
-                $payout = process_first_withdrawal_payout($withdrawalId, $amount, $formUpi);
-                flash_set('success', $payout['message']);
+            // External notifications and payouts happen after the transaction
+            // commits so slow network calls never hold the wallet row lock.
+            if (setting('withdrawal_mode', 'manual') === 'auto') {
+                $payout = process_withdrawal_payout($withdrawalId, $amountT, $formUpi);
+                flash_set($payout['ok'] ? 'success' : 'warning', $payout['message']);
             } else {
-                flash_set('success', 'Withdrawal request of ' . t_format($amount) . ' (' . inr_format(t_to_inr($amount)) . ') submitted. It will be processed within ' . $processingHours . ' hours.');
+                $notification = notify_manual_withdrawal(
+                    $user,
+                    $withdrawalId,
+                    $amountT,
+                    (float) $amountInr,
+                    $formUpi
+                );
+                if (!$notification['configured']) {
+                    flash_set(
+                        'warning',
+                        'Manual withdrawal request submitted, but no Telegram notification chats are configured. Please contact the administrator.'
+                    );
+                } elseif ($notification['failures'] !== []) {
+                    flash_set(
+                        'warning',
+                        'Manual withdrawal request submitted, but Telegram could not notify every configured chat. Please contact the administrator.'
+                    );
+                } else {
+                    flash_set(
+                        'success',
+                        'Manual withdrawal request of ' . inr_format($amountInr) . ' (' . t_format($amountT)
+                            . ') submitted. The payment team has been notified and will process it within '
+                            . $processingHours . ' hours.'
+                    );
+                }
             }
 
             redirect('withdraw.php');
@@ -304,15 +285,11 @@ try {
           </div>
         </div>
 
-        <!-- Minimum Cashout Bar -->
+        <!-- Withdrawal Amount Options -->
         <div class="mt-4 bg-[#f5f3ff] rounded-xl px-3 py-2.5 flex items-center justify-between text-xs">
           <div class="flex items-center gap-1.5">
-            <i class="fa-solid fa-crown text-amber-400 text-sm"></i>
-            <?php if ($isFirstWithdrawal): ?>
-              <span class="text-slate-600 font-medium">First withdrawal limit: <strong class="text-[#5925dc] font-bold"><?= e(t_format($firstWithdrawalMax)) ?> (<?= e(inr_format(t_to_inr($firstWithdrawalMax))) ?>)</strong></span>
-            <?php else: ?>
-              <span class="text-slate-600 font-medium">Minimum cashout: <strong class="text-[#5925dc] font-bold"><?= e(t_format($minWithdrawalT)) ?> (<?= e(inr_format(t_to_inr($minWithdrawalT))) ?>)</strong></span>
-            <?php endif; ?>
+            <i class="fa-solid fa-circle-info text-[#5925dc] text-sm"></i>
+            <span class="text-slate-600 font-medium">Choose ₹10, ₹50, or ₹100. T-coins are calculated at <?= e(inr_format($coinToInrRate)) ?> per T.</span>
           </div>
         </div>
       </div>
@@ -335,13 +312,25 @@ try {
           <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
             You need at least <?= e((string) $referralsRequired) ?> referrals to withdraw. You currently have <?= e((string) $referralCount) ?>.
           </div>
+        <?php elseif ($coinToInrRate <= 0 || !is_finite($coinToInrRate)): ?>
+          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+            Withdrawals are unavailable because the conversion rate is invalid.
+          </div>
         <?php elseif (!$canWithdraw): ?>
           <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-            Your balance of <?= e(t_format($balanceT)) ?> is below the minimum withdrawal of <?= e(t_format($effectiveMinT)) ?>.
+            <?php if (isset($withdrawalAmountsT[10])): ?>
+              Your balance of <?= e(t_format($balanceT)) ?> is not enough for the ₹10 option, which requires <?= e(t_format($withdrawalAmountsT[10])) ?>.
+            <?php else: ?>
+              The current conversion rate cannot represent the available withdrawal amounts. Please contact support.
+            <?php endif; ?>
           </div>
-        <?php elseif ($isFirstWithdrawal): ?>
+        <?php elseif (setting('withdrawal_mode', 'manual') === 'auto'): ?>
           <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            This is your first withdrawal. It is limited to <?= e(t_format($firstWithdrawalMax)) ?> and is paid out automatically.
+            Auto withdrawal is enabled. Requests are sent to the configured payment gateway without an approval step.
+          </div>
+        <?php else: ?>
+          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+            Manual payment is enabled. Your request will be sent to the payment team for processing.
           </div>
         <?php endif; ?>
 
@@ -358,51 +347,42 @@ try {
             </div>
           </div>
 
-          <!-- Amount Input -->
+          <!-- Fixed INR Amount Options -->
           <div class="mb-3">
-            <label class="text-xs font-bold text-slate-600 mb-1.5 block" for="withdrawAmount">Amount</label>
-            <div class="bg-[#f4f4f8] rounded-2xl px-3.5 py-3 flex items-center justify-between border border-slate-200/80">
-              <input type="number" id="withdrawAmount" name="amount" value="<?= e((string) $formAmount) ?>"
-                     min="<?= e((string) (int) $effectiveMinT) ?>" max="<?= e((string) (int) $effectiveMaxT) ?>" step="1"
-                     readonly aria-readonly="true"
-                     class="bg-transparent text-sm font-semibold text-slate-800 w-full outline-none cursor-default select-none" />
-              <span class="text-xs font-bold text-[#5925dc] whitespace-nowrap ml-2">T</span>
-            </div>
-            <div class="text-[10px] font-medium text-slate-400 mt-1.5">
-              <?php if ($isFirstWithdrawal): ?>
-                Max <?= e(t_format($firstWithdrawalMax)) ?> &middot; Balance <?= e(t_format($balanceT)) ?>
-              <?php else: ?>
-                Min <?= e(t_format($minWithdrawalT)) ?> &middot; Max <?= e(t_format($maxWithdrawalT)) ?> &middot; Balance <?= e(t_format($balanceT)) ?>
-              <?php endif; ?>
-            </div>
-            <div class="text-[10px] font-semibold text-[#5925dc] mt-1" id="amountInrHint">
-              You will receive <?= e(inr_format(t_to_inr($formAmount))) ?>
-            </div>
-          </div>
-
-          <!-- Quick Amount Chips: minimum, two random values, maximum -->
-          <?php if ($amountChips !== []): ?>
-            <?php
-              $chipCols = match (count($amountChips)) {
-                  1       => 'grid-cols-1',
-                  2       => 'grid-cols-2',
-                  3       => 'grid-cols-3',
-                  default => 'grid-cols-4',
-              };
-            ?>
-            <div class="grid <?= $chipCols ?> gap-2 mt-3" id="amountChips">
-              <?php foreach ($amountChips as $index => $chip): ?>
+            <label class="text-xs font-bold text-slate-600 mb-1.5 block">Choose amount</label>
+            <input type="hidden" id="withdrawAmountInr" name="amount_inr" value="<?= e((string) $formAmountInr) ?>" />
+            <div class="grid grid-cols-3 gap-2 mt-2" id="amountOptions">
+              <?php foreach ($withdrawalOptionsInr as $optionInr): ?>
                 <?php
-                  $isActive  = $index === 0;
-                  $chipClass = $isActive
+                  $optionAmountT = $withdrawalAmountsT[$optionInr] ?? null;
+                  $optionAvailable = $optionAmountT !== null && $optionAmountT <= $balanceT;
+                  $optionActive = $optionAvailable && $optionInr === $formAmountInr;
+                  $optionClass = $optionActive
                       ? 'bg-[#5925dc] text-white'
                       : 'bg-[#f2eeff] text-[#5925dc]';
+                  if (!$optionAvailable) {
+                      $optionClass = 'bg-slate-100 text-slate-400 cursor-not-allowed';
+                  }
                 ?>
-                <button type="button" data-amount="<?= e((string) $chip) ?>"
-                        class="amount-chip <?= $chipClass ?> text-xs font-bold py-2 rounded-xl active:scale-95 transition"><?= e(t_format($chip, false)) ?></button>
+                <button type="button" data-amount-inr="<?= e((string) $optionInr) ?>"
+                        <?= $optionAvailable ? '' : 'disabled' ?>
+                        aria-pressed="<?= $optionActive ? 'true' : 'false' ?>"
+                        class="amount-option <?= $optionClass ?> text-xs font-bold py-2.5 rounded-xl transition">
+                  <span class="block"><?= e(inr_format($optionInr)) ?></span>
+                  <span class="block mt-1 text-[10px] font-medium opacity-80">
+                    <?= $optionAmountT === null ? 'Unavailable' : 'Requires ' . t_format($optionAmountT) ?>
+                  </span>
+                </button>
               <?php endforeach; ?>
             </div>
-          <?php endif; ?>
+            <div class="text-[10px] font-semibold text-[#5925dc] mt-2" id="amountInrHint">
+              <?php if (isset($withdrawalAmountsT[$formAmountInr])): ?>
+                <?= e(inr_format($formAmountInr)) ?> deducts <?= e(t_format($formAmountT)) ?> from your T wallet.
+              <?php else: ?>
+                This amount is unavailable at the current conversion rate.
+              <?php endif; ?>
+            </div>
+          </div>
 
           <!-- Withdraw Button -->
           <button type="submit" <?= $canWithdraw ? '' : 'disabled' ?> class="btn-purple w-full text-white font-bold text-sm py-3.5 rounded-2xl flex items-center justify-center gap-2.5 mt-4 active:scale-[0.98] transition <?= $canWithdraw ? '' : 'opacity-50 cursor-not-allowed' ?>">
@@ -499,11 +479,9 @@ try {
 
   <!-- Withdraw Script -->
   <script>
-        const MIN_WITHDRAW = <?= (int) $effectiveMinT ?>;
-        const MAX_WITHDRAW = <?= (int) $effectiveMaxT ?>;
-        const IS_FIRST     = <?= $isFirstWithdrawal ? 'true' : 'false' ?>;
-        const BALANCE_T    = <?= (float) $balanceT ?>;
-        const COIN_RATE    = <?= (float) setting('coin_to_inr_rate', 0.10) ?>;
+        const BALANCE_T = <?= (float) $balanceT ?>;
+        const AMOUNT_T_BY_INR = <?= json_encode($withdrawalAmountsT, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+        const ALLOWED_INR = [10, 50, 100];
 
         let toastTimeout;
 
@@ -524,40 +502,44 @@ try {
           }, 2000);
         }
 
-        function setAmount(value) {
-          const input = document.getElementById('withdrawAmount');
-          input.value = value;
+        function setAmount(amountInr) {
+          const input = document.getElementById('withdrawAmountInr');
+          input.value = amountInr;
 
-          document.querySelectorAll('.amount-chip').forEach(function (chip) {
-            const isActive = parseInt(chip.dataset.amount, 10) === parseInt(value, 10);
-            chip.classList.toggle('bg-[#5925dc]', isActive);
-            chip.classList.toggle('text-white', isActive);
-            chip.classList.toggle('bg-[#f2eeff]', !isActive);
-            chip.classList.toggle('text-[#5925dc]', !isActive);
+          document.querySelectorAll('.amount-option').forEach(function (option) {
+            const isActive = !option.disabled && parseInt(option.dataset.amountInr, 10) === amountInr;
+            option.classList.toggle('bg-[#5925dc]', isActive);
+            option.classList.toggle('text-white', isActive);
+            option.classList.toggle('bg-[#f2eeff]', !isActive && !option.disabled);
+            option.classList.toggle('text-[#5925dc]', !isActive && !option.disabled);
+            option.setAttribute('aria-pressed', isActive ? 'true' : 'false');
           });
 
           const hint = document.getElementById('amountInrHint');
+          const amountT = AMOUNT_T_BY_INR[String(amountInr)];
           if (hint) {
-            const inr = (parseInt(value, 10) || 0) * COIN_RATE;
-            hint.textContent = 'You will receive ₹ ' + inr.toLocaleString('en-IN', {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2
-            });
+            hint.textContent = amountT === undefined
+              ? 'This amount is unavailable at the current conversion rate.'
+              : 'You will receive ₹ ' + amountInr.toLocaleString('en-IN') + ' and ' +
+                amountT.toLocaleString('en-IN', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                }) + ' T will be deducted from your wallet.';
           }
         }
 
-        document.querySelectorAll('.amount-chip').forEach(function (chip) {
-          chip.addEventListener('click', function () {
-            setAmount(parseInt(chip.dataset.amount, 10));
+        document.querySelectorAll('.amount-option').forEach(function (option) {
+          option.addEventListener('click', function () {
+            setAmount(parseInt(option.dataset.amountInr, 10));
           });
         });
 
-        // Highlight whichever chip matches the pre-selected amount.
-        setAmount(parseInt(document.getElementById('withdrawAmount').value, 10) || MIN_WITHDRAW);
+        setAmount(parseInt(document.getElementById('withdrawAmountInr').value, 10));
 
         document.getElementById('withdrawForm').addEventListener('submit', function (event) {
           const upiId = document.getElementById('upiId').value.trim();
-          const amount = parseInt(document.getElementById('withdrawAmount').value, 10);
+          const amountInr = parseInt(document.getElementById('withdrawAmountInr').value, 10);
+          const amountT = AMOUNT_T_BY_INR[String(amountInr)];
 
           if (!upiId) {
             event.preventDefault();
@@ -569,21 +551,12 @@ try {
             showToast('Please enter a valid UPI ID (e.g. yourname@upi)', true);
             return;
           }
-          if (!amount || amount < MIN_WITHDRAW) {
+          if (!ALLOWED_INR.includes(amountInr) || amountT === undefined) {
             event.preventDefault();
-            showToast(IS_FIRST
-              ? 'Please pick an amount between 1 and ' + MAX_WITHDRAW.toLocaleString() + ' T'
-              : 'Minimum withdrawal is ' + MIN_WITHDRAW.toLocaleString() + ' T', true);
+            showToast('Choose ₹10, ₹50, or ₹100', true);
             return;
           }
-          if (amount > MAX_WITHDRAW) {
-            event.preventDefault();
-            showToast(IS_FIRST
-              ? 'Your first withdrawal is limited to ' + MAX_WITHDRAW.toLocaleString() + ' T'
-              : 'Maximum withdrawal is ' + MAX_WITHDRAW.toLocaleString() + ' T', true);
-            return;
-          }
-          if (amount > BALANCE_T) {
+          if (amountT > BALANCE_T) {
             event.preventDefault();
             showToast('Insufficient balance', true);
             return;

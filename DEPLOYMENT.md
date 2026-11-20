@@ -185,9 +185,9 @@ Go to **Admin → Settings** and fill in:
 | Setting | Value |
 |---|---|
 | `bot_token` | The token from @BotFather. **Required** — without it the mini app cannot verify the Telegram identity and every page shows the "Open inside Telegram" screen. |
-| `bot_username` | Your bot's username **without** the `@` |
+| `bot_username` | Automatically refreshed from Telegram when you save a bot token. |
 | `bot_web_app_url` | **Leave blank** — it follows the current domain automatically. Set it only to pin a specific URL. |
-| `webhook_secret` | Any long random string (letters + digits) |
+| `webhook_secret` | Generated automatically the first time a bot token is saved. |
 
 ### How the mini app authenticates
 
@@ -200,15 +200,9 @@ the user from that session value.
 If `bot_token` is blank or wrong, the signature check fails and the app falls
 back to the "Open inside Telegram" screen — that is the symptom to look for.
 
-The same applies to `withdrawal_api_url`: it is an optional external payout hook.
-Leave it blank unless you are forwarding payouts to your own payout service — see
-[First withdrawal rule](#first-withdrawal-rule) below.
-
-Generate a secret:
-
-```bash
-php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
-```
+In Auto withdrawal mode, `withdrawal_api_url` is the payout gateway used for
+every request. Configure it before switching to Auto — see
+[Withdrawal modes](#9-withdrawal-modes-and-amounts) below.
 
 Then, in @BotFather:
 
@@ -221,15 +215,18 @@ Then, in @BotFather:
 
 ## 7. Register the webhook
 
-Open **`https://yourdomain.com/webhook/setup.php`** (admin login required).
+There is no separate setup page. In **Admin → Settings → Bot & Links**, enter
+the bot token and save. The app verifies the token with Telegram, refreshes the
+bot username, creates a webhook secret if needed, and registers
+`APP_URL/webhook/index.php`. `APP_URL` comes from the configured `APP_URL`
+environment variable or the current hosted URL.
 
-1. The status panel shows the current webhook state.
-2. Press **Set Webhook**.
-3. Press **Test** — Telegram should reply `ok: true`.
-4. Send `/start` to your bot from a real Telegram account. The update should
-   appear in the "Recent updates" table within a second or two.
+The webhook must be reachable over public HTTPS. If registration fails, the
+Settings page reports Telegram's error. After correcting the URL or HTTPS
+configuration, enter the current bot token again and save to retry registration.
+Then send `/start` to your bot from a real Telegram account.
 
-If **Set Webhook** fails:
+Common webhook errors:
 
 | Error | Fix |
 |---|---|
@@ -257,38 +254,30 @@ If **Set Webhook** fails:
 > updates. When a user joins a required channel, the bot re-checks their
 > membership and unlocks the app automatically — no need to press
 > "I've joined — verify". After changing this, re-register the webhook from
-> `webhook/setup.php` so Telegram starts sending `chat_member` events.
-
-**Admin → Settings → Access Gate**:
-
-| Setting | Meaning |
-|---|---|
-| `require_bot_start` | User must send `/start` before the app opens. Keep **on**. |
-| `require_channel_join` | User must join the channels above. |
-| `channel_gate_strict` | **Off (default):** if the membership check errors, let the user in. **On:** block them. Turn on only after you have confirmed the bot is a channel admin. |
-| `channel_gate_message` | Text shown on the lock screen. |
+> **Admin → Settings → Bot & Links** by entering the current bot token again
+> and saving, so Telegram starts sending `chat_member` events.
 
 Test with a fresh Telegram account before announcing the app.
 
 ---
 
-## 9. First withdrawal rule
+## 9. Withdrawal modes and amounts
 
-A user's **first** withdrawal is treated differently from every later one:
+Users can request only **₹10, ₹50, or ₹100**. The app converts the selected
+rupee amount to T using the current `coin_to_inr_rate`, records the rupee amount
+at request time, and accepts a request only when the user's wallet covers the
+converted T amount. The server validates the three allowed denominations and
+rechecks the wallet balance while holding its database lock.
 
-| | First withdrawal | Later withdrawals |
-|---|---|---|
-| Cap | `min_withdrawal_t` (default 2,000 T) | `max_withdrawal_t` (default 50,000 T) |
-| Minimum | none — any amount from 1 T up to the cap | `min_withdrawal_t` |
-| Referral requirement | skipped | `min_referrals_withdrawal` |
-| Payout | sent to `withdrawal_api_url` immediately | sent to `withdrawal_api_url` when an admin approves it |
+Referral requirements continue to apply in both modes.
 
-The cap is deliberately tied to `min_withdrawal_t` so there is a single number
-to tune: raising the minimum also raises the first-withdrawal ceiling.
-
-A request only counts as "used" once it is neither `cancelled` nor `rejected`,
-so a user whose first attempt was rejected still gets the first-withdrawal
-treatment on their next try.
+- **Manual:** requests remain pending for manual payment. The bot sends each
+  request to the configured Telegram chat IDs; the bot must be able to message
+  each user, group, or channel. After paying, an admin marks the request as
+  paid in **Admin → Withdrawals**. Rejecting a request refunds the held balance.
+- **Auto:** every valid request is sent immediately to `withdrawal_api_url`.
+  There is no approval step. A successful gateway response completes the
+  withdrawal; a failed or unavailable gateway leaves it pending for follow-up.
 
 ### Payout API contract
 
@@ -315,17 +304,15 @@ The payout is treated as **failed** when the response is non-2xx, when it
 contains `"success": false`, or when `status` is one of `failed`, `failure`,
 `error`, `rejected`, `declined`.
 
-The API is called from **two** places:
-
-| Trigger | On failure |
-|---|---|
-| A user's first withdrawal, immediately after the request is saved | The withdrawal stays `pending` with the reason in `admin_note`, so an admin can approve or reject it from **Admin → Withdrawals** as usual. |
-| An admin approving a withdrawal in **Admin → Withdrawals** | The admin's decision stands: the withdrawal stays `completed` and the reason is recorded in `admin_note` for follow-up. |
+The API is called only in **Auto** mode, immediately after each request is
+saved. On failure, the withdrawal stays `pending` and the reason is recorded in
+`admin_note` for follow-up.
 
 The user's balance is never restored automatically — only an explicit
 rejection refunds it.
 
-Leave `withdrawal_api_url` blank to keep every withdrawal in the admin queue.
+Manual mode does not use `withdrawal_api_url`; it uses the configured Telegram
+chat IDs to notify the payment team.
 
 ---
 
@@ -510,6 +497,6 @@ re-import the whole file over a live database — it drops tables).
 | Login says "Invalid credentials" | The `admins` row was not seeded, or the password hash was overwritten. |
 | Mini app opens but shows no data | `telegram_id` mismatch — the user row was created by a different bot. |
 | "Open inside Telegram" screen inside Telegram | `bot_token` is blank or wrong, so `webapp-auth.php` cannot verify `initData`. Set it in Admin → Settings. |
-| Webhook returns 401 | `webhook_secret` in Settings does not match the `secret_token` Telegram was registered with. Press **Rotate** then **Set** again. |
+| Webhook returns 401 | `webhook_secret` does not match Telegram's registered `secret_token`. Enter the current bot token again in **Admin → Settings → Bot & Links** and save to re-register the webhook with the saved secret. |
 | Lock screen never goes away | `require_bot_start` is on and the user has not sent `/start`, or the channel check is failing in strict mode. |
 | Referral never credited | The referral is applied on the user's **first app load** after `/start CODE`. If they never open the app, it stays pending by design. |

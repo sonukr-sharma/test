@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin — Withdrawal approve / reject handler
+ * Admin — Mark a manual withdrawal paid or reject it.
  */
 declare(strict_types=1);
 
@@ -20,12 +20,12 @@ if (!csrf_verify($_POST['csrf_token'] ?? null)) {
 $id     = (int) ($_POST['id'] ?? 0);
 $action = (string) ($_POST['action'] ?? '');
 
-if ($id <= 0 || !in_array($action, ['approve', 'reject'], true)) {
+if ($id <= 0 || !in_array($action, ['mark_paid', 'reject'], true)) {
     $_SESSION['admin_flash'] = ['type' => 'error', 'message' => 'Invalid withdrawal request.'];
     redirect('adm/withdrawal.php');
 }
 
-$newStatus = $action === 'approve' ? 'completed' : 'rejected';
+$newStatus = $action === 'mark_paid' ? 'completed' : 'rejected';
 
 try {
     $pdo = db();
@@ -50,7 +50,7 @@ try {
         $pdo->rollBack();
         $_SESSION['admin_flash'] = [
             'type'    => 'error',
-            'message' => 'This withdrawal has already been ' . $withdrawal['status'] . '.',
+            'message' => 'This withdrawal is already ' . $withdrawal['status'] . '.',
         ];
         redirect('adm/withdrawal.php');
     }
@@ -132,31 +132,12 @@ try {
 
     $pdo->commit();
 
-    // Approved withdrawals are forwarded to the configured payout API. The
-    // admin's decision already stands, so a payout failure keeps the
-    // `completed` status and records the reason in `admin_note`.
-    if ($action === 'approve') {
-        $payout = process_withdrawal_payout(
-            $id,
-            (float) $withdrawal['amount_t'],
-            (string) ($withdrawal['upi_id'] ?? ''),
-            'manual',
-            (int) $admin['id']
-        );
-
-        $_SESSION['admin_flash'] = [
-            'type'    => $payout['ok'] ? 'success' : 'warning',
-            'message' => $payout['ok']
-                ? 'Withdrawal #' . $id . ' approved and paid out'
-                    . ($payout['transaction_id'] !== null ? ' (txid ' . $payout['transaction_id'] . ').' : '.')
-                : 'Withdrawal #' . $id . ' approved, but the payout API failed: ' . (string) $payout['error'],
-        ];
-    } else {
-        $_SESSION['admin_flash'] = [
-            'type'    => 'success',
-            'message' => 'Withdrawal #' . $id . ' rejected and refunded.',
-        ];
-    }
+    $_SESSION['admin_flash'] = [
+        'type'    => 'success',
+        'message' => $action === 'mark_paid'
+            ? 'Withdrawal #' . $id . ' marked as paid.'
+            : 'Withdrawal #' . $id . ' rejected and refunded.',
+    ];
 } catch (Throwable $e) {
     if (isset($pdo) && $pdo->inTransaction()) {
         $pdo->rollBack();

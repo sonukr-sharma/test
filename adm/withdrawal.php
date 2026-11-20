@@ -410,9 +410,9 @@ try {
                         <form method="post" action="withdrawal_action.php" class="inline">
                           <?= csrf_field() ?>
                           <input type="hidden" name="id" value="<?= (int) $w['id'] ?>" />
-                          <input type="hidden" name="action" value="approve" />
+                          <input type="hidden" name="action" value="mark_paid" />
                           <button type="submit" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[11px] rounded-lg transition shadow-2xs">
-                            Approve
+                            Mark Paid
                           </button>
                         </form>
                         <form method="post" action="withdrawal_action.php" class="inline">

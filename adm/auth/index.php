@@ -220,7 +220,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           Manage your rewards<br class="hidden xl:block" /> platform with confidence.
         </h2>
         <p class="mt-4 text-sm text-slate-300/90 leading-relaxed">
-          Broadcast announcements, approve withdrawals and fine-tune referral settings — all from one dashboard.
+          Broadcast announcements, process manual withdrawals and fine-tune referral settings — all from one dashboard.
         </p>
 
         <ul class="mt-8 space-y-3.5 text-sm text-slate-200">

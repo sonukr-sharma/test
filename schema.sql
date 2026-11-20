@@ -438,26 +438,17 @@ INSERT INTO `settings` (`key`, `value`, `data_type`, `group_name`, `label`) VALU
   ('referral_reward_t',        '150',                          'decimal', 'referral',  'Reward per Referral (T)'),
   ('min_referrals_withdrawal', '5',                            'integer', 'referral',  'Minimum Referrals for the 1st Withdrawal'),
     ('min_referrals_subsequent_withdrawal', '20',                'integer', 'referral',  'Minimum Referrals for Every Withdrawal After the 1st'),
-  ('min_withdrawal_t',         '2000',                         'decimal', 'withdrawal','Minimum Withdrawal Amount (T) — also caps the first withdrawal'),
-  ('max_withdrawal_t',         '50000',                        'decimal', 'withdrawal','Maximum Withdrawal Amount (T)'),
-  ('auto_approve_withdrawals', '0',                            'boolean', 'withdrawal','Auto Approve Withdrawals'),
-  ('withdrawal_api_url',       '',                             'url',     'withdrawal','Withdrawal API URL — auto-pays the first withdrawal'),
+  ('withdrawal_mode',          'manual',                       'string',  'withdrawal','Withdrawal Mode: manual or auto'),
+  ('withdrawal_manual_chat_ids','',                            'string',  'withdrawal','Telegram chats notified about manual withdrawals'),
+  ('withdrawal_api_url',       '',                             'url',     'withdrawal','Automatic withdrawal gateway URL'),
   ('coin_to_inr_rate',         '0.10',                         'decimal', 'withdrawal','Conversion rate: 1 T in ₹'),
+  ('withdrawal_processing_hours', '24',                        'integer', 'withdrawal','Processing time shown to users (hours)'),
   ('bot_token',                '',                             'secret',  'bot',       'Telegram Bot Token'),
   ('bot_web_app_url',          '',                             'url',     'bot',       'Bot Web App URL'),
   ('bot_username',             '',                             'string',  'bot',       'Telegram Bot Username (auto-filled)'),
   ('webhook_secret',           '',                             'secret',  'bot',       'Telegram Webhook Secret Token'),
   ('signup_bonus_t',           '50',                           'decimal', 'bonus',     'Signup Bonus (T)'),
-  ('enable_signup_bonus',      '1',                            'boolean', 'bonus',     'Enable Signup Bonus'),
-  ('allow_registration',       '1',                            'boolean', 'platform',  'Allow New User Registration'),
-  ('withdrawals_enabled',      '1',                            'boolean', 'platform',  'Withdrawals Enabled'),
-  ('withdrawal_processing_hours', '24',                        'integer', 'withdrawal','Processing time shown to users (hours)'),
-
-  -- Channel gate: force users to join channels before the mini app unlocks.
-  ('require_channel_join',     '0',                            'boolean', 'gate',      'Require Channel Membership'),
-  ('require_bot_start',        '1',                            'boolean', 'gate',      'Require /start Before Using the App'),
-  ('channel_gate_strict',      '0',                            'boolean', 'gate',      'Block Users When the Channel Check Fails'),
-  ('channel_gate_message',     'Join our channels to unlock Refer & Earn and start earning rewards.', 'string', 'gate', 'Channel Gate Message');
+  ('enable_signup_bonus',      '1',                            'boolean', 'bonus',     'Enable Signup Bonus');
 
 -- =====================================================================
 --  End of schema

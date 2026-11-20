@@ -3,7 +3,7 @@
  * =====================================================================
  *  webhook/index.php — Telegram Bot update receiver
  *
- *  Register this URL with Telegram from webhook/setup.php:
+ *  Register this URL automatically when a bot token is saved in Admin → Settings:
  *      https://<your-domain>/webhook/index.php
  *
  *  Handles:
@@ -113,10 +113,6 @@ function webhook_upsert_user(array $from): ?array
         return $existing;
     }
 
-    if (!setting('allow_registration', true)) {
-        return null;
-    }
-
     $code = generate_referral_code($username ?? $firstName ?? 'USER');
 
     $stmt = db()->prepare(
@@ -191,7 +187,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     webhook_reply([
         'ok'      => true,
         'service' => 'Refer & Earn Telegram webhook',
-        'hint'    => 'Telegram posts updates here. Configure it from webhook/setup.php.',
+        'hint'    => 'Telegram posts updates here. Configure it by saving the bot token in Admin → Settings.',
     ]);
 }
 
@@ -355,8 +351,7 @@ try {
     $user = webhook_upsert_user($from);
 
     if ($user === null) {
-        log_update($update, $telegramId, $updateType, $command, false, 'Registration disabled or user blocked');
-        telegram_send_message($chatId, 'Sorry, registration is currently closed.');
+        log_update($update, $telegramId, $updateType, $command, false, 'Unable to create or load user');
         webhook_reply(['ok' => true]);
     }
 
