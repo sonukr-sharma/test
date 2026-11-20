@@ -211,13 +211,23 @@ function store_broadcast_media(string $mediaType): array
         ],
     ];
 
-    $mime = (string) (new finfo(FILEINFO_MIME_TYPE))->file((string) $file['tmp_name']);
-    $ext  = $allowed[$mediaType][$mime] ?? null;
+    // finfo is optional: if the extension is missing or the file can't be
+        // inspected, fall back to the original extension so the upload still works.
+        $mime = '';
+        if (class_exists('finfo')) {
+            try {
+                $mime = (string) (new finfo(FILEINFO_MIME_TYPE))->file((string) $file['tmp_name']);
+            } catch (Throwable $e) {
+                error_log('finfo failed for broadcast media: ' . $e->getMessage());
+            }
+        }
 
-    if ($ext === null) {
-        $originalExt = strtolower((string) pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION));
-        $ext         = $extensionMap[$mediaType][$originalExt] ?? null;
-    }
+        $ext = $mime !== '' ? ($allowed[$mediaType][$mime] ?? null) : null;
+
+        if ($ext === null) {
+            $originalExt = strtolower((string) pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION));
+            $ext         = $extensionMap[$mediaType][$originalExt] ?? null;
+        }
 
     if ($ext === null) {
         return ['path' => null, 'error' => 'That file type is not allowed for a ' . $mediaType . ' broadcast.'];
@@ -289,7 +299,15 @@ if (mb_strlen($messageText) > $textLimit) {
 $media = ['path' => null, 'error' => ''];
 
 if ($mediaType !== 'none') {
-    $media = store_broadcast_media($mediaType);
+    try {
+        $media = store_broadcast_media($mediaType);
+    } catch (Throwable $e) {
+        error_log('Broadcast media storage failed: ' . $e->getMessage());
+        $media = [
+            'path'  => null,
+            'error' => APP_DEBUG ? $e->getMessage() : 'Could not save the uploaded file. Please try again.',
+        ];
+    }
 
     if ($media['error'] !== '') {
         $_SESSION['admin_flash'] = ['type' => 'error', 'message' => $media['error']];

@@ -145,54 +145,7 @@ $s = settings();
 </head>
 <body class="flex flex-col lg:flex-row min-h-screen text-slate-800 antialiased overflow-x-hidden">
 
-  <!-- Mobile Overlay Backdrop -->
-  <div id="sidebar-backdrop" onclick="toggleSidebar()" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-40 hidden lg:hidden transition-opacity"></div>
-
-  <!-- Sidebar -->
-  <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-64 lg:w-60 bg-[#141627] text-slate-300 flex flex-col shrink-0 select-none transform -translate-x-full lg:translate-x-0 lg:sticky lg:top-0 lg:h-screen transition-transform duration-300 ease-in-out">
-    <!-- Brand Header -->
-    <div class="flex items-center justify-between px-5 py-6">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-full bg-gradient-to-b from-amber-300 to-amber-500 p-0.5 shadow-md flex items-center justify-center shrink-0">
-          <div class="w-full h-full rounded-full bg-amber-400 border-2 border-amber-200 flex items-center justify-center text-amber-900 font-bold text-lg">
-            T
-          </div>
-        </div>
-        <div>
-          <h1 class="text-white font-semibold text-base leading-tight">Refer & Earn</h1>
-          <p class="text-xs text-slate-400">Admin Panel</p>
-        </div>
-      </div>
-      <!-- Close Button (Mobile Only) -->
-      <button onclick="toggleSidebar()" class="lg:hidden text-slate-400 hover:text-white p-1">
-        <i class="fa-solid fa-xmark text-xl"></i>
-      </button>
-    </div>
-
-    <!-- Navigation -->
-    <nav class="mt-2 px-3 space-y-1.5 text-sm font-medium flex-1 overflow-y-auto">
-      <a href="broadcast.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
-        <i class="fa-solid fa-paper-plane text-slate-400 w-5 text-center text-base"></i>
-        <span>Broadcast</span>
-      </a>
-      <a href="withdrawal.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
-        <i class="fa-solid fa-wallet text-slate-400 w-5 text-center text-base"></i>
-        <span>Withdrawals</span>
-      </a>
-      <a href="channels.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
-        <i class="fa-solid fa-tower-broadcast text-slate-400 w-5 text-center text-base"></i>
-        <span>Channels</span>
-      </a>
-      <a href="settings.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl bg-gradient-to-r from-[#6c3cf7] to-[#5a29e4] text-white shadow-lg shadow-indigo-600/30">
-        <i class="fa-solid fa-gear text-white w-5 text-center text-base"></i>
-        <span>Settings</span>
-      </a>
-      <a href="account.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
-        <i class="fa-solid fa-user-shield text-slate-400 w-5 text-center text-base"></i>
-        <span>Account</span>
-      </a>
-    </nav>
-  </aside>
+  <?php require __DIR__ . '/common/sidebar.php'; ?>
 
   <!-- Main Content Area -->
   <main class="flex-1 w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-[1440px] mx-auto overflow-x-hidden">
@@ -626,13 +579,6 @@ $s = settings();
           }
         }
       }
-    }
-
-    function toggleSidebar() {
-      const sidebar = document.getElementById('sidebar');
-      const backdrop = document.getElementById('sidebar-backdrop');
-      sidebar.classList.toggle('-translate-x-full');
-      backdrop.classList.toggle('hidden');
     }
 
     // Copy buttons: copy the input's value, or its placeholder when left blank

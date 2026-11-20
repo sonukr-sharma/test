@@ -193,67 +193,9 @@ if ($isSuperAdmin) {
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>body{font-family:'Plus Jakarta Sans',sans-serif;}</style>
 </head>
-<body class="bg-[#f6f7fb] text-slate-900 antialiased">
+<body class="flex min-h-screen flex-col overflow-x-hidden bg-[#f6f7fb] text-slate-900 antialiased lg:flex-row">
 
-<div class="flex min-h-screen">
-
-  <!-- Sidebar -->
-  <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 z-50 w-64 bg-[#0f172a] flex flex-col py-5 -translate-x-full lg:translate-x-0 transition-transform duration-300">
-    <div class="flex items-center justify-between gap-3 px-5 pb-5 border-b border-white/5">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[#6c3cf7] to-[#5a29e4] flex items-center justify-center">
-          <i class="fa-solid fa-bolt text-white text-sm"></i>
-        </div>
-        <div>
-          <h1 class="text-white font-semibold text-base leading-tight">Refer &amp; Earn</h1>
-          <p class="text-xs text-slate-400">Admin Panel</p>
-        </div>
-      </div>
-      <button onclick="toggleSidebar()" class="lg:hidden text-slate-400 hover:text-white p-1">
-        <i class="fa-solid fa-xmark text-xl"></i>
-      </button>
-    </div>
-
-    <nav class="mt-2 px-3 space-y-1.5 text-sm font-medium flex-1 overflow-y-auto">
-      <a href="broadcast.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
-        <i class="fa-solid fa-paper-plane text-slate-400 w-5 text-center text-base"></i>
-        <span>Broadcast</span>
-      </a>
-      <a href="withdrawal.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
-        <i class="fa-solid fa-wallet text-slate-400 w-5 text-center text-base"></i>
-        <span>Withdrawals</span>
-      </a>
-      <a href="channels.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
-        <i class="fa-solid fa-tower-broadcast text-slate-400 w-5 text-center text-base"></i>
-        <span>Channels</span>
-      </a>
-      <a href="devices.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
-        <i class="fa-solid fa-mobile-screen-button text-slate-400 w-5 text-center text-base"></i>
-        <span>Devices</span>
-      </a>
-      <a href="settings.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 transition">
-        <i class="fa-solid fa-gear text-slate-400 w-5 text-center text-base"></i>
-        <span>Settings</span>
-      </a>
-      <a href="account.php" class="flex items-center gap-3.5 px-4 py-3 rounded-xl bg-gradient-to-r from-[#6c3cf7] to-[#5a29e4] text-white shadow-lg shadow-indigo-600/30">
-        <i class="fa-solid fa-user-shield text-white w-5 text-center text-base"></i>
-        <span>Account</span>
-      </a>
-    </nav>
-
-    <div class="px-3 pt-3 mt-2 border-t border-white/5">
-      <div class="px-4 py-2">
-        <p class="text-xs font-semibold text-white truncate"><?= e((string) $admin['name']) ?></p>
-        <p class="text-[11px] text-slate-400 truncate"><?= e((string) $admin['email']) ?></p>
-      </div>
-      <a href="logout.php" class="flex items-center gap-3.5 px-4 py-2.5 rounded-xl text-slate-300 hover:bg-white/5 transition text-sm font-medium">
-        <i class="fa-solid fa-right-from-bracket text-slate-400 w-5 text-center text-base"></i>
-        <span>Sign out</span>
-      </a>
-    </div>
-  </aside>
-
-  <div id="overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-black/40 z-40 hidden lg:hidden"></div>
+<?php require __DIR__ . '/common/sidebar.php'; ?>
 
   <!-- Main -->
   <main class="flex-1 w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-[1440px] mx-auto overflow-x-hidden">
@@ -461,13 +403,5 @@ if ($isSuperAdmin) {
     </div>
 
   </main>
-</div>
-
-<script>
-  function toggleSidebar() {
-    document.getElementById('sidebar').classList.toggle('-translate-x-full');
-    document.getElementById('overlay').classList.toggle('hidden');
-  }
-</script>
 </body>
 </html>
