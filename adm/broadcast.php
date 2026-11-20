@@ -25,14 +25,30 @@ try {
         'SELECT `id`, `title`, `media_type`, `audience`, `status`,
                 `total_recipients`, `delivered_count`, `failed_count`, `sent_at`
            FROM `broadcasts`
-          ORDER BY COALESCE(`sent_at`, `created_at`) DESC
-          LIMIT 20'
+          ORDER BY COALESCE(`sent_at`, `created_at`) DESC, `id` DESC'
     )->fetchAll();
 } catch (Throwable $e) {
     error_log('Broadcast load failed: ' . $e->getMessage());
     $loadError = APP_DEBUG ? $e->getMessage() : 'Unable to load broadcasts right now.';
 }
 
+try {
+    foreach ($history as &$broadcast) {
+        $broadcast['sent_at_display'] = $broadcast['sent_at'] !== null
+            ? date('d M Y, h:i A', strtotime((string) $broadcast['sent_at']))
+            : 'Not sent';
+    }
+    unset($broadcast);
+    $historyJson = json_encode(
+        $history,
+        JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR
+    );
+} catch (JsonException $e) {
+    error_log('Broadcast history JSON encoding failed: ' . $e->getMessage());
+    $loadError = APP_DEBUG ? $e->getMessage() : 'Unable to load broadcasts right now.';
+    $history = [];
+    $historyJson = '[]';
+}
 $totalRecipients = (int) $stats['total_recipients'];
 $delivered       = (int) $stats['delivered_count'];
 $failed          = (int) $stats['failed_count'];
@@ -42,15 +58,6 @@ $failedPct       = $totalRecipients > 0 ? round($failed / $totalRecipients * 100
 $flash = $_SESSION['admin_flash'] ?? null;
 unset($_SESSION['admin_flash']);
 
-function broadcast_icon(string $mediaType): array
-{
-    return match ($mediaType) {
-        'image' => ['bg-[#e8f3ff] text-[#2563eb]', 'fa-image'],
-        'video' => ['bg-[#fff0f3] text-[#e11d48]', 'fa-video'],
-        'file'  => ['bg-[#f2edff] text-[#6d37f7]', 'fa-file'],
-        default => ['bg-[#fff3e6] text-amber-600', 'fa-paper-plane'],
-    };
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -501,71 +508,28 @@ Invite your friends and earn 150 T for each successful referral.
               <div class="py-8 text-center text-xs font-medium text-rose-600">
                 <i class="fa-solid fa-triangle-exclamation mr-2"></i><?= e($loadError) ?>
               </div>
-            <?php elseif ($history === []): ?>
-              <div class="py-8 text-center text-xs font-medium text-slate-500">
+            <?php else: ?>
+              <div id="broadcastHistoryList" class="divide-y divide-slate-100"></div>
+              <div id="broadcastHistoryEmpty" class="hidden py-8 text-center text-xs font-medium text-slate-500">
                 <i class="fa-regular fa-folder-open mr-2"></i>No broadcasts sent yet.
               </div>
-            <?php else: ?>
-              <?php foreach ($history as $b): ?>
-                <?php
-                  [$iconClass, $icon] = broadcast_icon((string) $b['media_type']);
-                  $recipients = (int) $b['total_recipients'];
-                  $ok         = (int) $b['delivered_count'];
-                  $bad        = (int) $b['failed_count'];
-                  $okPct      = $recipients > 0 ? round($ok / $recipients * 100, 1) : 0.0;
-                  $badPct     = $recipients > 0 ? round($bad / $recipients * 100, 1) : 0.0;
-                  $when       = $b['sent_at'] ?? null;
-                ?>
-                <div class="py-3 flex items-center justify-between gap-2">
-                  <div class="flex items-center gap-3 min-w-0">
-                    <div class="w-10 h-10 rounded-xl <?= e($iconClass) ?> flex items-center justify-center shrink-0">
-                      <i class="fa-solid <?= e($icon) ?> text-sm"></i>
-                    </div>
-                    <div class="min-w-0">
-                      <div class="flex items-center gap-1.5">
-                        <h4 class="text-xs font-bold text-slate-900 truncate"><?= e($b['title']) ?></h4>
-                        <?php
-                          $status = (string) $b['status'];
-                          $badge  = match ($status) {
-                              'sent'      => 'bg-emerald-50 text-emerald-600',
-                              'sending'   => 'bg-blue-50 text-blue-600',
-                              'scheduled' => 'bg-amber-50 text-amber-600',
-                              'failed'    => 'bg-rose-50 text-rose-600',
-                              default     => 'bg-slate-100 text-slate-500',
-                          };
-                        ?>
-                        <span class="shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide <?= e($badge) ?>"><?= e($status) ?></span>
-                      </div>
-                      <p class="text-[11px] text-slate-400 mt-0.5">
-                        <?= $when !== null ? e(date('d M Y, h:i A', strtotime((string) $when))) : 'Not sent' ?>
-                      </p>
-                      <p class="text-[11px] text-slate-500">
-                        <?= e(ucfirst((string) $b['audience'])) ?> Users (<?= number_format($recipients) ?>)
-                      </p>
-                    </div>
-                  </div>
-                  <div class="flex items-center gap-2.5 shrink-0">
-                    <div class="text-left min-w-[92px]">
-                      <p class="text-[10px] text-slate-400 leading-tight">Delivered</p>
-                      <p class="text-[11px] font-bold text-emerald-600"><?= number_format($ok) ?> (<?= e($okPct) ?>%)</p>
-                      <p class="text-[10px] text-slate-400 leading-tight mt-0.5">Failed</p>
-                      <p class="text-[11px] font-semibold text-rose-500"><?= number_format($bad) ?> (<?= e($badPct) ?>%)</p>
-                    </div>
-                  </div>
-                </div>
-              <?php endforeach; ?>
             <?php endif; ?>
           </div>
           <!-- Pagination Footer -->
           <div class="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-            <p class="text-[11px] text-slate-500">
-              Showing <?= number_format(count($history)) ?> of <?= number_format((int) $stats['total_broadcasts']) ?> broadcasts
-            </p>
-            <a href="broadcast.php" class="text-[11px] font-semibold text-[#6339f9] hover:underline">Refresh</a>
+            <p id="historyRange" class="text-[11px] text-slate-500">Showing 0-0 of 0 broadcasts</p>
+            <div class="flex items-center gap-2">
+              <button id="historyPrevious" type="button" disabled aria-label="Previous history page" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">Previous</button>
+              <span id="historyPageIndicator" class="text-[11px] text-slate-500">Page 1 of 1</span>
+              <button id="historyNext" type="button" disabled aria-label="Next history page" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">Next</button>
+            </div>
           </div>
         </div>
       </section>
     </main>
+    <?php if ($loadError === null): ?>
+      <script type="application/json" id="broadcastHistoryData"><?= $historyJson ?></script>
+    <?php endif; ?>
     <script>
       let toastTimeout;
 
@@ -625,8 +589,11 @@ Invite your friends and earn 150 T for each successful referral.
       const fileBtnList = document.getElementById('fileBtnList');
       const addFileBtn = document.getElementById('addFileBtn');
 
+      let buttonStyleGroupId = 0;
+
       function createButtonItem(list, prefix) {
         const n = list.querySelectorAll('.btn-item').length + 1;
+        const styleGroup = prefix + (++buttonStyleGroupId);
         const item = document.createElement('div');
         item.className = 'btn-item border border-slate-200 rounded-xl p-3 space-y-2.5 bg-slate-50/30';
         item.innerHTML = `
@@ -654,19 +621,19 @@ Invite your friends and earn 150 T for each successful referral.
 							<label class="block text-xs font-medium text-slate-700 mb-1">Button Style</label>
 							<div class="grid grid-cols-4 gap-2">
 								<label class="flex items-center justify-center cursor-pointer">
-									<input type="radio" name="${prefix}${n}" value="normal" checked class="sr-only peer" />
+									<input type="radio" name="${styleGroup}" value="normal" checked class="sr-only peer" />
 									<span class="w-full py-1.5 rounded-lg bg-slate-500 text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-slate-500 transition">Normal</span>
 								</label>
 								<label class="flex items-center justify-center cursor-pointer">
-									<input type="radio" name="${prefix}${n}" value="primary" class="sr-only peer" />
+									<input type="radio" name="${styleGroup}" value="primary" class="sr-only peer" />
 									<span class="w-full py-1.5 rounded-lg bg-[#3390ec] text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-[#3390ec] transition">Primary</span>
 								</label>
 								<label class="flex items-center justify-center cursor-pointer">
-									<input type="radio" name="${prefix}${n}" value="success" class="sr-only peer" />
+									<input type="radio" name="${styleGroup}" value="success" class="sr-only peer" />
 									<span class="w-full py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-emerald-500 transition">Success</span>
 								</label>
 								<label class="flex items-center justify-center cursor-pointer">
-									<input type="radio" name="${prefix}${n}" value="danger" class="sr-only peer" />
+									<input type="radio" name="${styleGroup}" value="danger" class="sr-only peer" />
 									<span class="w-full py-1.5 rounded-lg bg-rose-500 text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-rose-500 transition">Danger</span>
 								</label>
 							</div>
@@ -1134,6 +1101,107 @@ Invite your friends and earn 150 T for each successful referral.
           renderPreview();
         }, 0);
       });
+
+      const historyDataElement = document.getElementById('broadcastHistoryData');
+      const historyList = document.getElementById('broadcastHistoryList');
+      const historyEmpty = document.getElementById('broadcastHistoryEmpty');
+
+      if (historyDataElement && historyList && historyEmpty) {
+        const broadcastHistory = JSON.parse(historyDataElement.textContent);
+        const historyPageSize = 8;
+        const historyRange = document.getElementById('historyRange');
+        const historyPageIndicator = document.getElementById('historyPageIndicator');
+        const historyPrevious = document.getElementById('historyPrevious');
+        const historyNext = document.getElementById('historyNext');
+        const numberFormat = new Intl.NumberFormat('en-US');
+        const mediaStyles = {
+          image: ['bg-[#e8f3ff] text-[#2563eb]', 'fa-image'],
+          video: ['bg-[#fff0f3] text-[#e11d48]', 'fa-video'],
+          file: ['bg-[#f2edff] text-[#6d37f7]', 'fa-file']
+        };
+        const statusStyles = {
+          sent: 'bg-emerald-50 text-emerald-600',
+          sending: 'bg-blue-50 text-blue-600',
+          scheduled: 'bg-amber-50 text-amber-600',
+          failed: 'bg-rose-50 text-rose-600'
+        };
+        let currentHistoryPage = 1;
+
+        function historyElement(tag, className, text) {
+          const element = document.createElement(tag);
+          element.className = className;
+          element.textContent = text;
+          return element;
+        }
+
+        function createHistoryItem(broadcast) {
+          const media = mediaStyles[broadcast.media_type] || ['bg-[#fff3e6] text-amber-600', 'fa-paper-plane'];
+          const status = String(broadcast.status || '');
+          const recipients = Number(broadcast.total_recipients);
+          const delivered = Number(broadcast.delivered_count);
+          const failed = Number(broadcast.failed_count);
+          const percentage = (count) => recipients > 0
+            ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(count / recipients * 100)
+            : '0';
+
+          const item = historyElement('div', 'py-3 flex items-center justify-between gap-2', '');
+          const details = historyElement('div', 'flex items-center gap-3 min-w-0', '');
+          const iconContainer = historyElement('div', `w-10 h-10 rounded-xl ${media[0]} flex items-center justify-center shrink-0`, '');
+          const icon = historyElement('i', `fa-solid ${media[1]} text-sm`, '');
+          const text = historyElement('div', 'min-w-0', '');
+          const heading = historyElement('div', 'flex items-center gap-1.5', '');
+          const title = historyElement('h4', 'text-xs font-bold text-slate-900 truncate', String(broadcast.title || ''));
+          const badge = historyElement('span', `shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${statusStyles[status] || 'bg-slate-100 text-slate-500'}`, status);
+          const sentAt = historyElement('p', 'text-[11px] text-slate-400 mt-0.5', String(broadcast.sent_at_display || 'Not sent'));
+          const audience = String(broadcast.audience || '');
+          const audienceLabel = audience ? audience.charAt(0).toUpperCase() + audience.slice(1) : '';
+          const audienceDetails = historyElement('p', 'text-[11px] text-slate-500', `${audienceLabel} Users (${numberFormat.format(recipients)})`);
+          const metrics = historyElement('div', 'text-left min-w-[92px]', '');
+          const deliveredLabel = historyElement('p', 'text-[10px] text-slate-400 leading-tight', 'Delivered');
+          const deliveredValue = historyElement('p', 'text-[11px] font-bold text-emerald-600', `${numberFormat.format(delivered)} (${percentage(delivered)}%)`);
+          const failedLabel = historyElement('p', 'text-[10px] text-slate-400 leading-tight mt-0.5', 'Failed');
+          const failedValue = historyElement('p', 'text-[11px] font-semibold text-rose-500', `${numberFormat.format(failed)} (${percentage(failed)}%)`);
+
+          iconContainer.appendChild(icon);
+          heading.append(title, badge);
+          text.append(heading, sentAt, audienceDetails);
+          details.append(iconContainer, text);
+          metrics.append(deliveredLabel, deliveredValue, failedLabel, failedValue);
+          item.append(details, metrics);
+          return item;
+        }
+
+        function renderHistoryPage() {
+          const pageCount = Math.max(1, Math.ceil(broadcastHistory.length / historyPageSize));
+          currentHistoryPage = Math.min(currentHistoryPage, pageCount);
+          const firstIndex = (currentHistoryPage - 1) * historyPageSize;
+          const pageItems = broadcastHistory.slice(firstIndex, firstIndex + historyPageSize);
+          const fragment = document.createDocumentFragment();
+
+          pageItems.forEach((broadcast) => fragment.appendChild(createHistoryItem(broadcast)));
+          historyList.replaceChildren(fragment);
+          historyList.classList.toggle('hidden', broadcastHistory.length === 0);
+          historyEmpty.classList.toggle('hidden', broadcastHistory.length !== 0);
+          historyRange.textContent = `Showing ${numberFormat.format(broadcastHistory.length ? firstIndex + 1 : 0)}-${numberFormat.format(firstIndex + pageItems.length)} of ${numberFormat.format(broadcastHistory.length)} broadcasts`;
+          historyPageIndicator.textContent = `Page ${numberFormat.format(currentHistoryPage)} of ${numberFormat.format(pageCount)}`;
+          historyPrevious.disabled = currentHistoryPage <= 1;
+          historyNext.disabled = currentHistoryPage >= pageCount;
+        }
+
+        historyPrevious.addEventListener('click', () => {
+          if (currentHistoryPage > 1) {
+            currentHistoryPage--;
+            renderHistoryPage();
+          }
+        });
+        historyNext.addEventListener('click', () => {
+          if (currentHistoryPage < Math.ceil(broadcastHistory.length / historyPageSize)) {
+            currentHistoryPage++;
+            renderHistoryPage();
+          }
+        });
+        renderHistoryPage();
+      }
 
       renderPreview();
     </script>
