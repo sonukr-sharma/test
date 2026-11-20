@@ -334,7 +334,8 @@ Leave `withdrawal_api_url` blank to keep every withdrawal in the admin queue.
 Broadcasts are sent **synchronously** from the admin composer — there is no
 queue, no cron job and no worker process to install. When you press **Send**,
 `adm/broadcast_send.php` saves the broadcast, then calls the Telegram Bot API
-once per recipient before the page redirects.
+once per recipient before the page redirects. Delivery continues if the admin
+closes the browser tab, provided the PHP/web-server process remains running.
 
 ### Requirements
 
@@ -360,8 +361,8 @@ Users with `status = 'blocked'` are always excluded.
 2. `status` moves to `sending` and `total_recipients` is filled in.
 3. Each recipient is attempted in turn, with a 50 ms pause between sends to stay
    under Telegram's ~30 messages/second limit.
-4. A `429 Too Many Requests` response is retried once after the `retry_after`
-   delay Telegram asks for (clamped to 1–30 seconds).
+4. `429`, server-side, and transport errors are retried up to four attempts;
+   rate-limit delays are clamped to 1–30 seconds.
 5. A `400` response complaining about *entities* is retried once with
    `parse_mode` removed, so a stray `*` or `_` in the message does not fail the
    whole broadcast.
@@ -377,8 +378,11 @@ The admin sees a toast with the outcome, e.g.
 
 ### Media and formatting
 
-- Images (JPG, PNG, GIF, WebP) up to 5 MB, video (MP4, MOV) up to 50 MB, and
+- Images (JPG, PNG, GIF, WebP) up to 5 MB, MPEG-4 video (MP4) up to 50 MB, and
   documents (PDF, DOC, DOCX, XLS, XLSX, ZIP) up to 20 MB.
+- Non-GIF photos must have width plus height at most 10,000 and an aspect ratio
+  no greater than 20:1. Image and document limits are below Telegram's upload
+  maxima; video is capped at Telegram's 50 MB bot-upload limit.
 - Files are stored under `uploads/broadcasts/` with a random name and are
   **never served over HTTP** — `.htaccess` returns 404 for `/uploads/`.
 - The composer's Markdown (`*bold*`, `_italic_`, `__underline__`, `~strike~`,
@@ -408,9 +412,10 @@ The admin sees a toast with the outcome, e.g.
 ### Long sends
 
 Because delivery is synchronous, a broadcast to a very large audience keeps the
-admin's browser waiting. With the 50 ms pause, roughly 1,200 recipients take
-about a minute. If you expect audiences in the tens of thousands, raise
-`max_execution_time` or split the audience into batches.
+send request active. The handler ignores browser disconnects and disables PHP's
+execution-time limit for delivery; the admin session lock is released while it
+runs. With the 50 ms pause, roughly 1,200 recipients take about a minute. If
+you expect audiences in the tens of thousands, split the audience into batches.
 
 ---
 

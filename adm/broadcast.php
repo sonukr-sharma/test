@@ -257,7 +257,7 @@ function broadcast_icon(string $mediaType): array
               <div id="panel-text" class="tab-panel">
                 <div class="space-y-3">
                   <div class="border border-slate-200 rounded-xl bg-slate-50/40 p-3 focus-within:border-indigo-500 focus-within:bg-white transition">
-                    <textarea rows="3" id="textMessage" placeholder="Type your message here..." class="w-full text-xs text-slate-800 bg-transparent focus:outline-none resize-none placeholder:text-slate-400"></textarea>
+                    <textarea rows="3" id="textMessage" maxlength="4096" placeholder="Type your message here..." class="w-full text-xs text-slate-800 bg-transparent focus:outline-none resize-none placeholder:text-slate-400"></textarea>
                     <div class="flex items-center justify-between pt-1">
                       <button type="button" class="text-slate-400 hover:text-slate-600 transition">
                         <i class="fa-regular fa-face-smile text-base"></i>
@@ -315,12 +315,12 @@ function broadcast_icon(string $mediaType): array
                   <div data-upload class="border border-dashed border-slate-300 rounded-xl bg-slate-50/40 p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-slate-50 transition">
                     <i class="fa-solid fa-cloud-arrow-up text-2xl text-slate-400 mb-2"></i>
                     <p data-upload-label class="text-xs font-medium text-slate-700">Click to upload an image</p>
-                    <p data-upload-hint class="text-[11px] text-slate-400 mt-1">PNG, JPG or GIF up to 5MB</p>
-                    <input type="file" accept="image/*" name="media_image" data-field="media" class="hidden" />
+                    <p data-upload-hint class="text-[11px] text-slate-400 mt-1">JPG, PNG, WebP or GIF up to 5MB</p>
+                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.gif" name="media_image" data-field="media" class="hidden" />
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-slate-700 mb-1.5">Caption (Optional)</label>
-                    <textarea rows="2" data-field="caption" placeholder="Add a caption to your image..." class="w-full text-xs text-slate-800 bg-slate-50/40 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500 focus:bg-white transition resize-none placeholder:text-slate-400"></textarea>
+                    <textarea rows="2" maxlength="1024" data-field="caption" placeholder="Add a caption to your image..." class="w-full text-xs text-slate-800 bg-slate-50/40 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500 focus:bg-white transition resize-none placeholder:text-slate-400"></textarea>
                   </div>
                   <!-- Buttons List -->
                   <div id="imageBtnList" class="space-y-3">
@@ -372,12 +372,12 @@ function broadcast_icon(string $mediaType): array
                   <div data-upload class="border border-dashed border-slate-300 rounded-xl bg-slate-50/40 p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-slate-50 transition">
                     <i class="fa-solid fa-file-video text-2xl text-slate-400 mb-2"></i>
                     <p data-upload-label class="text-xs font-medium text-slate-700">Click to upload a video</p>
-                    <p data-upload-hint class="text-[11px] text-slate-400 mt-1">MP4 or MOV up to 50MB</p>
-                    <input type="file" accept="video/*" name="media_video" data-field="media" class="hidden" />
+                    <p data-upload-hint class="text-[11px] text-slate-400 mt-1">MPEG-4 MP4 video up to 50MB</p>
+                    <input type="file" accept=".mp4,video/mp4" name="media_video" data-field="media" class="hidden" />
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-slate-700 mb-1.5">Caption (Optional)</label>
-                    <textarea rows="2" data-field="caption" placeholder="Add a caption to your video..." class="w-full text-xs text-slate-800 bg-slate-50/40 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500 focus:bg-white transition resize-none placeholder:text-slate-400"></textarea>
+                    <textarea rows="2" maxlength="1024" data-field="caption" placeholder="Add a caption to your video..." class="w-full text-xs text-slate-800 bg-slate-50/40 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500 focus:bg-white transition resize-none placeholder:text-slate-400"></textarea>
                   </div>
                   <!-- Buttons List -->
                   <div id="videoBtnList" class="space-y-3">
@@ -429,12 +429,12 @@ function broadcast_icon(string $mediaType): array
                   <div data-upload class="border border-dashed border-slate-300 rounded-xl bg-slate-50/40 p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-slate-50 transition">
                     <i class="fa-solid fa-file-arrow-up text-2xl text-slate-400 mb-2"></i>
                     <p data-upload-label class="text-xs font-medium text-slate-700">Click to upload a file</p>
-                    <p data-upload-hint class="text-[11px] text-slate-400 mt-1">PDF, DOC, XLS or ZIP up to 20MB</p>
+                    <p data-upload-hint class="text-[11px] text-slate-400 mt-1">PDF, DOC/DOCX, XLS/XLSX or ZIP up to 20MB</p>
                     <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.zip" name="media_file" data-field="media" class="hidden" />
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-slate-700 mb-1.5">Caption (Optional)</label>
-                    <textarea rows="2" data-field="caption" placeholder="Add a caption to your file..." class="w-full text-xs text-slate-800 bg-slate-50/40 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500 focus:bg-white transition resize-none placeholder:text-slate-400"></textarea>
+                    <textarea rows="2" maxlength="1024" data-field="caption" placeholder="Add a caption to your file..." class="w-full text-xs text-slate-800 bg-slate-50/40 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500 focus:bg-white transition resize-none placeholder:text-slate-400"></textarea>
                   </div>
                   <!-- Buttons List -->
                   <div id="fileBtnList" class="space-y-3">
@@ -545,6 +545,9 @@ function broadcast_icon(string $mediaType): array
               <span>Send Broadcast</span>
             </button>
           </div>
+          <p class="mt-2 text-[10px] leading-relaxed text-slate-500">
+            Delivery continues on the server if you leave this page. Telegram may still reject users who blocked the bot or cannot receive messages.
+          </p>
         </form>
         <!-- Column 2: Message Preview (4 Cols on XL, 6 on LG) -->
         <div class="lg:col-span-6 xl:col-span-4 bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 flex flex-col">
@@ -907,7 +910,7 @@ Invite your friends and earn 150 T for each successful referral.
 
       function safeUrl(url) {
         const trimmed = String(url).trim();
-        return /^(https?:\/\/|mailto:|tg:\/\/)/i.test(trimmed) ? trimmed : '#';
+        return /^(https?:\/\/|tg:\/\/)/i.test(trimmed) ? trimmed : '#';
       }
 
       function renderInline(text) {
@@ -918,7 +921,7 @@ Invite your friends and earn 150 T for each successful referral.
 
           // [label](url)
           if (ch === '[') {
-            const m = /^\[([^\]\n]+)\]\(([^)\s]+)\)/.exec(text.slice(i));
+            const m = /^\[([^\]\n]+)\]\(((?:https?|tg):\/\/[^)\s]+)\)/i.exec(text.slice(i));
             if (m) {
               out += '<a class="tg-link" href="' + escapeHtml(safeUrl(m[2])) + '" target="_blank" rel="noopener noreferrer">' + renderInline(m[1]) + '</a>';
               i += m[0].length;

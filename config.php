@@ -2405,13 +2405,18 @@ function broadcast_extract_file_id(mixed $result, string $mediaType): string
  * Deliver one broadcast to its audience, synchronously.
  *
  * Writes `sending` before the loop and `sent`/`failed` afterwards, and keeps
- * the delivered/failed counters current so the dashboard reflects reality
- * even if the request dies part-way through.
+ * the delivered/failed counters current. The request keeps running if the
+ * browser disconnects, and temporary Telegram/network failures are retried.
  *
  * @return array{status: string, total: int, delivered: int, failed: int, error: string}
  */
 function broadcast_deliver(int $broadcastId): array
 {
+    ignore_user_abort(true);
+    if (function_exists('set_time_limit') && !set_time_limit(0)) {
+        error_log('Unable to disable the PHP execution time limit for broadcast delivery.');
+    }
+
     $result = ['status' => 'failed', 'total' => 0, 'delivered' => 0, 'failed' => 0, 'error' => ''];
 
     $pdo = db();
@@ -2475,27 +2480,43 @@ function broadcast_deliver(int $broadcastId): array
 
     foreach ($recipients as $recipient) {
         $chatId = $recipient['telegram_id'];
+        $recipientParseMode = $parseMode;
+        $response           = ['ok' => false];
 
-        $response = $useMedia
-            ? telegram_send_media($chatId, $mediaType, $mediaPath, $text, $replyMarkup, $parseMode, $fileId)
-            : telegram_send_message($chatId, $text, $replyMarkup, $parseMode);
-
-        // Telegram rate-limits at ~30 messages/second; back off and retry once.
-        if (($response['ok'] ?? false) !== true && (int) ($response['error_code'] ?? 0) === 429) {
-            $retryAfter = (int) ($response['parameters']['retry_after'] ?? 1);
-            sleep(max(1, min(30, $retryAfter)));
-
+        for ($attempt = 1; $attempt <= 4; $attempt++) {
             $response = $useMedia
-                ? telegram_send_media($chatId, $mediaType, $mediaPath, $text, $replyMarkup, $parseMode, $fileId)
-                : telegram_send_message($chatId, $text, $replyMarkup, $parseMode);
-        }
+                ? telegram_send_media($chatId, $mediaType, $mediaPath, $text, $replyMarkup, $recipientParseMode, $fileId)
+                : telegram_send_message($chatId, $text, $replyMarkup, $recipientParseMode);
 
-        // A malformed entity would otherwise fail for every single recipient.
-        if (($response['ok'] ?? false) !== true && (int) ($response['error_code'] ?? 0) === 400
-            && stripos((string) ($response['description'] ?? ''), 'entit') !== false) {
-            $response = $useMedia
-                ? telegram_send_media($chatId, $mediaType, $mediaPath, $text, $replyMarkup, 'none', $fileId)
-                : telegram_send_message($chatId, $text, $replyMarkup, 'none');
+            if (($response['ok'] ?? false) === true) {
+                break;
+            }
+
+            // Retry once without formatting if Telegram rejects malformed entities.
+            if ($recipientParseMode !== 'none' && (int) ($response['error_code'] ?? 0) === 400
+                && stripos((string) ($response['description'] ?? ''), 'entit') !== false) {
+                $recipientParseMode = 'none';
+                $response = $useMedia
+                    ? telegram_send_media($chatId, $mediaType, $mediaPath, $text, $replyMarkup, 'none', $fileId)
+                    : telegram_send_message($chatId, $text, $replyMarkup, 'none');
+
+                if (($response['ok'] ?? false) === true) {
+                    break;
+                }
+            }
+
+            $errorCode = (int) ($response['error_code'] ?? 0);
+            $retryable = $errorCode === 429 || $errorCode >= 500 || !isset($response['error_code']);
+            if (!$retryable || $attempt === 4) {
+                break;
+            }
+
+            if ($errorCode === 429) {
+                $retryAfter = (int) ($response['parameters']['retry_after'] ?? 1);
+                sleep(max(1, min(30, $retryAfter)));
+            } else {
+                usleep(250000 * (2 ** ($attempt - 1)));
+            }
         }
 
         if (($response['ok'] ?? false) === true) {

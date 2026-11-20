@@ -189,7 +189,7 @@ function store_broadcast_media(string $mediaType): array
 
     $allowed = [
         'image' => ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/gif' => 'gif', 'image/webp' => 'webp'],
-        'video' => ['video/mp4' => 'mp4', 'video/quicktime' => 'mov'],
+        'video' => ['video/mp4' => 'mp4'],
         'file'  => [
             'application/pdf' => 'pdf',
             'application/msword' => 'doc',
@@ -204,7 +204,7 @@ function store_broadcast_media(string $mediaType): array
     // application/zip, so the original extension is a necessary fallback.
     $extensionMap = [
         'image' => ['jpg' => 'jpg', 'jpeg' => 'jpg', 'png' => 'png', 'gif' => 'gif', 'webp' => 'webp'],
-        'video' => ['mp4' => 'mp4', 'mov' => 'mov'],
+        'video' => ['mp4' => 'mp4'],
         'file'  => [
             'pdf' => 'pdf', 'doc' => 'doc', 'docx' => 'docx',
             'xls' => 'xls', 'xlsx' => 'xlsx', 'zip' => 'zip',
@@ -231,6 +231,22 @@ function store_broadcast_media(string $mediaType): array
 
     if ($ext === null) {
         return ['path' => null, 'error' => 'That file type is not allowed for a ' . $mediaType . ' broadcast.'];
+    }
+
+    if ($mediaType === 'image') {
+        $imageInfo = @getimagesize((string) $file['tmp_name']);
+        if (!is_array($imageInfo) || !isset($imageInfo[0], $imageInfo[1])) {
+            return ['path' => null, 'error' => 'That image could not be validated. Please use a valid supported image file.'];
+        }
+
+        $width  = (int) $imageInfo[0];
+        $height = (int) $imageInfo[1];
+        if ($ext !== 'gif' && (
+            $width <= 0 || $height <= 0 || $width + $height > 10000
+            || max($width, $height) > 20 * min($width, $height)
+        )) {
+            return ['path' => null, 'error' => 'Telegram photos require width plus height at most 10000 and an aspect ratio at most 20:1.'];
+        }
     }
 
     $dir  = broadcast_upload_dir();
@@ -387,6 +403,10 @@ try {
 }
 
 // The row is committed, so a delivery failure can no longer lose the draft.
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 try {
     $delivery = broadcast_deliver($broadcastId);
 } catch (Throwable $e) {
@@ -419,6 +439,10 @@ try {
     ]);
 } catch (Throwable $e) {
     error_log('Broadcast audit failed: ' . $e->getMessage());
+}
+
+if (session_status() !== PHP_SESSION_ACTIVE && !session_start()) {
+    error_log('Could not reopen the admin session after broadcast delivery.');
 }
 
 if ($delivery['status'] === 'sent') {
