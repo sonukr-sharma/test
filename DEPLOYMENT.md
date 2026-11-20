@@ -201,7 +201,7 @@ If `bot_token` is blank or wrong, the signature check fails and the app falls
 back to the "Open inside Telegram" screen — that is the symptom to look for.
 
 In Auto withdrawal mode, `withdrawal_api_url` is the payout gateway used for
-every request. Configure it before switching to Auto — see
+the user's first withdrawal request. Configure it before switching to Auto — see
 [Withdrawal modes](#9-withdrawal-modes-and-amounts) below.
 
 In @BotFather, open `/mybots` → your bot → **Bot Settings → Menu Button** to
@@ -262,16 +262,17 @@ Test with a fresh Telegram account before announcing the app.
 
 ## 9. Withdrawal modes and amounts
 
-Users can request only **₹10, ₹50, or ₹100**. The app converts the selected
-rupee amount to T using the current `coin_to_inr_rate`, records the rupee amount
-at request time, and accepts a request only when the user's wallet covers the
-converted T amount. The server validates the three allowed denominations and
-rechecks the wallet balance while holding its database lock.
+The user's first withdrawal can only be **₹10**. Later requests can be **₹10,
+₹50, or ₹100**. The app converts the selected rupee amount to T using the current
+`coin_to_inr_rate`, records the rupee amount at request time, and accepts a
+request only when the user's wallet covers the converted T amount. The server
+validates the allowed denominations and rechecks the wallet balance while
+holding its database lock.
 
 Referral requirements continue to apply in both modes.
 
-- **Manual:** requests remain pending for manual payment. The bot sends each
-  request to the configured Telegram chat IDs; the bot must be able to message
+- **Manual:** the user's first request remains pending for manual payment. The
+  bot sends it to the configured Telegram chat IDs; the bot must be able to message
   each user, group, or channel. Add trusted Telegram user IDs to the authorized
   admin list to authorize the notification's green **Mark as Paid** and
   red **Reject & Refund** buttons. Both buttons appear on every alert. Personal
@@ -281,9 +282,15 @@ Referral requirements continue to apply in both modes.
   successful action completes the withdrawal; a failed action rejects it and
   refunds the held balance. The web admin withdrawal dashboard remains
   available as well.
-- **Auto:** every valid request is sent immediately to `withdrawal_api_url`.
-  There is no approval step. A successful gateway response completes the
-  withdrawal; a failed or unavailable gateway leaves it pending for follow-up.
+- **Auto:** the user's first valid request is sent immediately to
+  `withdrawal_api_url`. There is no approval step. A successful gateway response
+  completes the withdrawal; a failed or unavailable gateway leaves it pending
+  for follow-up.
+
+After any prior withdrawal record (including rejected or cancelled requests),
+later requests are still recorded as **pending** and the wallet amount is debited
+and held. They do not trigger a Telegram notification or payout gateway call;
+admins can review them in the withdrawal dashboard.
 
 ### Payout API contract
 
@@ -310,9 +317,10 @@ The payout is treated as **failed** when the response is non-2xx, when it
 contains `"success": false`, or when `status` is one of `failed`, `failure`,
 `error`, `rejected`, `declined`.
 
-The API is called only in **Auto** mode, immediately after each request is
-saved. On failure, the withdrawal stays `pending` and the reason is recorded in
-`admin_note` for follow-up.
+The API is called only in **Auto** mode, immediately after the user's first
+withdrawal request is saved. Later requests are not sent to the API. On failure,
+the first withdrawal stays `pending` and the reason is recorded in `admin_note`
+for follow-up.
 
 The user's balance is never restored automatically — only an explicit
 rejection refunds it.

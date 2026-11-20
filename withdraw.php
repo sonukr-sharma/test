@@ -12,8 +12,10 @@ $coinToInrRate      = (float) setting('coin_to_inr_rate', 0.10);
 $autoPayoutEnabled  = setting('withdrawal_mode', 'manual') === 'auto' && withdrawal_api_url() !== '';
 $balanceT           = (float) $user['balance_t'];
 $referralCount      = (int) $user['referral_count'];
+$isFirstWithdrawal  = is_first_withdrawal((int) $user['id']);
 
 $withdrawalOptionsInr = [10, 50, 100];
+$allowedWithdrawalOptionsInr = $isFirstWithdrawal ? [10] : $withdrawalOptionsInr;
 $withdrawalAmountsT = [];
 if ($coinToInrRate > 0 && is_finite($coinToInrRate)) {
     foreach ($withdrawalOptionsInr as $amountInr) {
@@ -25,12 +27,12 @@ if ($coinToInrRate > 0 && is_finite($coinToInrRate)) {
     }
 }
 
-$isFirstWithdrawal  = is_first_withdrawal((int) $user['id']);
-
 $referralsRequired  = $isFirstWithdrawal ? $minReferrals : $minReferralsSubseq;
 $availableWithdrawalsInr = [];
 foreach ($withdrawalOptionsInr as $amountInr) {
-    if (isset($withdrawalAmountsT[$amountInr]) && $withdrawalAmountsT[$amountInr] <= $balanceT) {
+    if (in_array($amountInr, $allowedWithdrawalOptionsInr, true)
+        && isset($withdrawalAmountsT[$amountInr])
+        && $withdrawalAmountsT[$amountInr] <= $balanceT) {
         $availableWithdrawalsInr[] = $amountInr;
     }
 }
@@ -45,7 +47,7 @@ $formAmountT = $withdrawalAmountsT[$formAmountInr] ?? 0.0;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $formUpi = trim((string) ($_POST['upi_id'] ?? ''));
     $submittedAmountInr = filter_var($_POST['amount_inr'] ?? '', FILTER_VALIDATE_INT);
-    if ($submittedAmountInr !== false && in_array($submittedAmountInr, $withdrawalOptionsInr, true)) {
+    if ($submittedAmountInr !== false && in_array($submittedAmountInr, $allowedWithdrawalOptionsInr, true)) {
         $formAmountInr = $submittedAmountInr;
     }
     $formAmountT = $withdrawalAmountsT[$formAmountInr] ?? 0.0;
@@ -54,8 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $formError = 'Your session expired. Please try again.';
     } elseif ($referralCount < $referralsRequired) {
         $formError = sprintf('You need at least %d referrals to withdraw.', $referralsRequired);
-    } elseif ($submittedAmountInr === false || !in_array($submittedAmountInr, $withdrawalOptionsInr, true)) {
-        $formError = 'Choose a withdrawal amount of ₹10, ₹50, or ₹100.';
+    } elseif ($submittedAmountInr === false || !in_array($submittedAmountInr, $allowedWithdrawalOptionsInr, true)) {
+        $formError = $isFirstWithdrawal
+            ? 'Your first withdrawal can only be ₹10.'
+            : 'Choose a withdrawal amount of ₹10, ₹50, or ₹100.';
     } elseif ($coinToInrRate <= 0 || !is_finite($coinToInrRate)) {
         $formError = 'Withdrawals are unavailable because the conversion rate is invalid.';
     } elseif (!array_key_exists($submittedAmountInr, $withdrawalAmountsT)) {
@@ -72,9 +76,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $pdo->beginTransaction();
 
-            $stmt = $pdo->prepare('SELECT `balance_t` FROM `users` WHERE `id` = :id FOR UPDATE');
+            $stmt = $pdo->prepare('SELECT `balance_t`, `referral_count` FROM `users` WHERE `id` = :id FOR UPDATE');
             $stmt->execute([':id' => $user['id']]);
-            $lockedBalance = (float) $stmt->fetchColumn();
+            $lockedUser = $stmt->fetch();
+            $lockedBalance = (float) $lockedUser['balance_t'];
+            $referralCount = (int) $lockedUser['referral_count'];
+
+            $stmt = $pdo->prepare(
+                'SELECT `id`
+                   FROM `withdrawals`
+                  WHERE `user_id` = :uid
+                  ORDER BY `id`
+                  LIMIT 1
+                  FOR UPDATE'
+            );
+            $stmt->execute([':uid' => $user['id']]);
+            $isFirstWithdrawal = $stmt->fetchColumn() === false;
+            $referralsRequired = $isFirstWithdrawal ? $minReferrals : $minReferralsSubseq;
+
+            if ($isFirstWithdrawal && $amountInr !== 10) {
+                throw new RuntimeException('Your first withdrawal can only be ₹10.');
+            }
+
+            if ($referralCount < $referralsRequired) {
+                throw new RuntimeException(sprintf('You need at least %d referrals to withdraw.', $referralsRequired));
+            }
 
             if ($amountT > $lockedBalance) {
                 throw new RuntimeException('Insufficient balance.');
@@ -104,7 +130,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([
                 ':wid'  => $withdrawalId,
                 ':to'   => 'pending',
-                ':note' => 'Requested by user via mini app.',
+                ':note' => $isFirstWithdrawal
+                    ? 'Requested by user via mini app.'
+                    : 'Repeat withdrawal recorded as pending; no payout or Telegram notification was triggered.',
             ]);
 
             credit_wallet(
@@ -121,7 +149,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // External notifications and payouts happen after the transaction
             // commits so slow network calls never hold the wallet row lock.
-            if ($autoPayoutEnabled) {
+            if (!$isFirstWithdrawal) {
+                flash_set(
+                    'success',
+                    'Your withdrawal request for ' . inr_format($amountInr)
+                        . ' has been received. Please allow up to ' . $processingHours . ' hours for processing.'
+                );
+            } elseif ($autoPayoutEnabled) {
                 $payout = process_withdrawal_payout($withdrawalId, $amountT, $formUpi);
                 flash_set(
                     $payout['ok'] ? 'success' : 'warning',
@@ -162,8 +196,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->rollBack();
             }
 
-            error_log('withdraw.php failed: ' . $e->getMessage());
-            $formError = APP_DEBUG ? $e->getMessage() : 'Could not submit your request. Please try again.';
+            $validationMessages = [
+                'Insufficient balance.',
+                'Your first withdrawal can only be ₹10.',
+                sprintf('You need at least %d referrals to withdraw.', $minReferrals),
+                sprintf('You need at least %d referrals to withdraw.', $minReferralsSubseq),
+            ];
+            if ($e instanceof RuntimeException && in_array($e->getMessage(), $validationMessages, true)) {
+                $formError = $e->getMessage();
+            } else {
+                error_log('withdraw.php failed: ' . $e->getMessage());
+                $formError = APP_DEBUG ? $e->getMessage() : 'Could not submit your request. Please try again.';
+            }
         }
     }
 }
@@ -289,7 +333,7 @@ try {
         <div class="mt-4 bg-[#f5f3ff] rounded-xl px-3 py-2.5 flex items-center justify-between text-xs">
           <div class="flex items-center gap-1.5">
             <i class="fa-solid fa-circle-info text-[#5925dc] text-sm"></i>
-            <span class="text-slate-600 font-medium">Choose ₹10, ₹50, or ₹100. T-coins are calculated at <?= e(inr_format($coinToInrRate)) ?> per T.</span>
+            <span class="text-slate-600 font-medium"><?= $isFirstWithdrawal ? 'Your first withdrawal can only be ₹10.' : 'Choose ₹10, ₹50, or ₹100.' ?> T-coins are calculated at <?= e(inr_format($coinToInrRate)) ?> per T.</span>
           </div>
         </div>
       </div>
@@ -299,8 +343,8 @@ try {
         <h3 class="font-extrabold text-sm text-slate-900 mb-3">Withdraw Amount</h3>
 
         <?php if ($referralCount < $referralsRequired): ?>
-          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-amber-600 text-white border border-amber-600">
-            You need at least <?= e((string) $referralsRequired) ?> referrals to withdraw. You currently have <?= e((string) $referralCount) ?>.
+          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] text-center font-semibold bg-amber-600 text-white border border-amber-600">
+            You need <?= e((string) $referralsRequired) ?> referrals to withdraw; you currently have <?= e((string) $referralCount) ?>.
           </div>
         <?php elseif ($coinToInrRate <= 0 || !is_finite($coinToInrRate)): ?>
           <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
@@ -327,6 +371,7 @@ try {
                      class="bg-transparent text-sm font-semibold text-slate-800 w-full outline-none" />
               <i class="fa-solid fa-building-columns text-[#5925dc] text-sm ml-2"></i>
             </div>
+            <p class="mt-2 text-[11px] font-medium text-slate-500">Saved on this device and updated automatically when changed.</p>
           </div>
 
           <!-- Fixed INR Amount Options -->
@@ -337,7 +382,8 @@ try {
               <?php foreach ($withdrawalOptionsInr as $optionInr): ?>
                 <?php
                   $optionAmountT = $withdrawalAmountsT[$optionInr] ?? null;
-                  $optionAvailable = $optionAmountT !== null && $optionAmountT <= $balanceT;
+                  $optionAllowed = !$isFirstWithdrawal || $optionInr === 10;
+                  $optionAvailable = $optionAllowed && $optionAmountT !== null && $optionAmountT <= $balanceT;
                   $optionActive = $optionAvailable && $optionInr === $formAmountInr;
                   $optionClass = $optionActive
                       ? 'bg-[#5925dc] text-white'
@@ -456,9 +502,46 @@ try {
   <script>
         const BALANCE_T = <?= (float) $balanceT ?>;
         const AMOUNT_T_BY_INR = <?= json_encode($withdrawalAmountsT, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-        const ALLOWED_INR = [10, 50, 100];
-
+        const ALLOWED_INR = <?= json_encode($allowedWithdrawalOptionsInr) ?>;
+        const AMOUNT_VALIDATION_MESSAGE = <?= json_encode(
+            $isFirstWithdrawal ? 'Your first withdrawal can only be ₹10' : 'Choose ₹10, ₹50, or ₹100',
+            JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+        ) ?>;
+        const REMEMBERED_UPI_STORAGE_KEY = <?= json_encode(
+            'withdrawal-upi-' . hash('sha256', (string) $user['id']),
+            JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+        ) ?>;
+        const upiInput = document.getElementById('upiId');
         let toastTimeout;
+
+        function persistRememberedUpi(value) {
+          try {
+            if (value) {
+              window.localStorage.setItem(REMEMBERED_UPI_STORAGE_KEY, value);
+            } else {
+              window.localStorage.removeItem(REMEMBERED_UPI_STORAGE_KEY);
+            }
+          } catch (error) {
+            console.error('Unable to save the remembered UPI ID.', error);
+            showToast('Could not remember the UPI ID on this device', true);
+          }
+        }
+
+        try {
+          const rememberedUpi = window.localStorage.getItem(REMEMBERED_UPI_STORAGE_KEY);
+          if (upiInput.value.trim()) {
+            persistRememberedUpi(upiInput.value.trim());
+          } else if (rememberedUpi !== null && rememberedUpi !== '') {
+            upiInput.value = rememberedUpi;
+          }
+        } catch (error) {
+          console.error('Unable to access the remembered UPI ID.', error);
+          showToast('Saved UPI ID is unavailable in this browser', true);
+        }
+
+        upiInput.addEventListener('input', function () {
+          persistRememberedUpi(upiInput.value.trim());
+        });
 
         function showToast(message, isError) {
           const toast = document.getElementById('toast');
@@ -517,7 +600,7 @@ try {
           }
           if (!ALLOWED_INR.includes(amountInr) || amountT === undefined) {
             event.preventDefault();
-            showToast('Choose ₹10, ₹50, or ₹100', true);
+            showToast(AMOUNT_VALIDATION_MESSAGE, true);
             return;
           }
           if (amountT > BALANCE_T) {
@@ -525,6 +608,8 @@ try {
             showToast('Insufficient balance', true);
             return;
           }
+
+          persistRememberedUpi(upiId);
 
           const button = this.querySelector('button[type="submit"]');
           button.disabled = true;

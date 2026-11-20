@@ -425,17 +425,13 @@ function withdrawal_api_url(): string
 }
 
 /**
- * How many withdrawals a user has already requested.
- *
- * Cancelled and rejected requests are ignored: neither ever paid out, so they
- * must not consume the user's one-time first-withdrawal allowance.
+ * How many withdrawal requests a user has already recorded, regardless of status.
  */
 function user_withdrawal_count(int $userId): int
 {
     try {
         $stmt = db()->prepare(
-            "SELECT COUNT(*) FROM `withdrawals`
-              WHERE `user_id` = :uid AND `status` NOT IN ('cancelled', 'rejected')"
+            'SELECT COUNT(*) FROM `withdrawals` WHERE `user_id` = :uid'
         );
         $stmt->execute([':uid' => $userId]);
 
@@ -448,7 +444,7 @@ function user_withdrawal_count(int $userId): int
 }
 
 /**
- * True when the user has never requested a withdrawal.
+ * True when the user has no prior withdrawal record.
  */
 function is_first_withdrawal(int $userId): bool
 {
@@ -609,8 +605,9 @@ function withdrawal_stored_inr(int $withdrawalId, float $amountT): float
  * Runs after the withdrawal row has been committed so a slow payout endpoint
  * never holds the wallet row lock.
  *
- * The gateway is called for every request in Auto mode. A failed payout leaves
- * the request pending for manual follow-up; it is never marked paid on error.
+ * The gateway is called for the user's first withdrawal in Auto mode. A failed
+ * payout leaves the request pending for manual follow-up; it is never marked
+ * paid on error.
  *
  * `$amountT` is the T-coin amount stored on the withdrawal row. The rupee value
  * sent to the payout API is the `amount_inr` frozen on the row when the user
