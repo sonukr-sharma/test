@@ -149,11 +149,11 @@ function collect_posted_buttons(): array
             );
         }
 
-        $style     = (string) ($row['style'] ?? 'primary');
+        $style     = (string) ($row['style'] ?? 'normal');
         $buttons[] = [
             'label' => mb_substr($label, 0, 64),
             'url'   => mb_substr($url, 0, 500),
-            'style' => in_array($style, ['primary', 'success', 'danger'], true) ? $style : 'primary',
+            'style' => in_array($style, ['normal', 'primary', 'success', 'danger'], true) ? $style : 'normal',
         ];
         if (count($buttons) >= 8) {
             break;
@@ -288,12 +288,7 @@ try {
     redirect('adm/broadcast.php');
 }
 
-if ($messageText === '' && $buttons === []) {
-    $_SESSION['admin_flash'] = ['type' => 'error', 'message' => 'Add a message or at least one button before sending.'];
-    redirect('adm/broadcast.php');
-}
-
-// sendMessage rejects an empty text, so buttons alone cannot carry a text post.
+// Text broadcasts require a message, but media captions are optional.
 if ($mediaType === 'none' && $messageText === '') {
     $_SESSION['admin_flash'] = ['type' => 'error', 'message' => 'Add a message before sending a text broadcast.'];
     redirect('adm/broadcast.php');

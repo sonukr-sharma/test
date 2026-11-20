@@ -1400,11 +1400,10 @@ function telegram_send_media(int|string $chatId, string $mediaType, string $file
         $field    => $fileId !== '' ? $fileId : new CURLFile($filePath),
     ];
 
-    if ($parseMode !== 'none' && $parseMode !== '') {
-        $params['parse_mode'] = $parseMode;
-    }
-
     if ($caption !== '') {
+        if ($parseMode !== 'none' && $parseMode !== '') {
+            $params['parse_mode'] = $parseMode;
+        }
         $params['caption'] = $caption;
     }
 
@@ -2553,7 +2552,7 @@ function broadcast_recipients(string $audience): array
 /**
  * Build the Telegram `inline_keyboard` markup for a broadcast.
  *
- * @param  list<array{label: string, url: string}> $buttons
+ * @param  list<array{label: string, url: string, style?: string}> $buttons
  * @return array<string, mixed>|null
  */
 function broadcast_reply_markup(array $buttons): ?array
@@ -2563,8 +2562,25 @@ function broadcast_reply_markup(array $buttons): ?array
     }
 
     $rows = [];
+    $row = [];
     foreach ($buttons as $button) {
-        $rows[] = [['text' => (string) $button['label'], 'url' => (string) $button['url']]];
+        $inlineButton = [
+            'text' => (string) $button['label'],
+            'url' => (string) $button['url'],
+        ];
+        $style = (string) ($button['style'] ?? 'normal');
+        if (in_array($style, ['primary', 'success', 'danger'], true)) {
+            $inlineButton['style'] = $style;
+        }
+        $row[] = $inlineButton;
+        if (count($row) === 2) {
+            $rows[] = $row;
+            $row = [];
+        }
+    }
+
+    if ($row !== []) {
+        $rows[] = $row;
     }
 
     return ['inline_keyboard' => $rows];
@@ -2643,7 +2659,7 @@ function broadcast_deliver(int $broadcastId): array
     }
 
     $btnStmt = $pdo->prepare(
-        'SELECT `label`, `url` FROM `broadcast_buttons` WHERE `broadcast_id` = :id ORDER BY `position`'
+        'SELECT `label`, `url`, `style` FROM `broadcast_buttons` WHERE `broadcast_id` = :id ORDER BY `position`'
     );
     $btnStmt->execute([':id' => $broadcastId]);
     $replyMarkup = broadcast_reply_markup($btnStmt->fetchAll());

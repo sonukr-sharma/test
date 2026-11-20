@@ -266,42 +266,7 @@ function broadcast_icon(string $mediaType): array
                     </div>
                   </div>
                   <!-- Buttons List -->
-                  <div id="textBtnList" class="space-y-3">
-                    <!-- Button 1 -->
-                    <div class="btn-item border border-slate-200 rounded-xl p-3 space-y-2.5 bg-slate-50/30">
-                      <div class="flex items-center justify-between">
-                        <span class="text-[11px] font-semibold text-slate-500">Button 1</span>
-                        <button type="button" class="btn-remove text-slate-400 hover:text-rose-500 transition hidden">
-                          <i class="fa-solid fa-trash-can text-xs"></i>
-                        </button>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-700 mb-1">Button Text</label>
-                        <input type="text" data-field="btnText" placeholder="e.g. Open App" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-700 mb-1">Button Link</label>
-                        <input type="text" data-field="btnLink" placeholder="<?= e(APP_URL) ?>/refer-earn.php" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-700 mb-1">Button Style</label>
-                        <div class="grid grid-cols-3 gap-2">
-                          <label class="flex items-center justify-center cursor-pointer">
-                            <input type="radio" name="textBtnStyle1" value="primary" checked class="sr-only peer" />
-                            <span class="w-full py-1.5 rounded-lg bg-[#6339f9] text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-[#6339f9] transition">Primary</span>
-                          </label>
-                          <label class="flex items-center justify-center cursor-pointer">
-                            <input type="radio" name="textBtnStyle1" value="success" class="sr-only peer" />
-                            <span class="w-full py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-emerald-500 transition">Success</span>
-                          </label>
-                          <label class="flex items-center justify-center cursor-pointer">
-                            <input type="radio" name="textBtnStyle1" value="danger" class="sr-only peer" />
-                            <span class="w-full py-1.5 rounded-lg bg-rose-500 text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-rose-500 transition">Danger</span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <div id="textBtnList" class="space-y-3"></div>
                   <!-- Add Button -->
                   <button type="button" id="addTextBtn" class="w-full py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 hover:text-[#6339f9] hover:border-[#6339f9] text-xs font-medium flex items-center justify-center gap-2 transition">
                     <i class="fa-solid fa-plus text-xs"></i>
@@ -323,42 +288,7 @@ function broadcast_icon(string $mediaType): array
                     <textarea rows="2" maxlength="1024" data-field="caption" placeholder="Add a caption to your image..." class="w-full text-xs text-slate-800 bg-slate-50/40 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500 focus:bg-white transition resize-none placeholder:text-slate-400"></textarea>
                   </div>
                   <!-- Buttons List -->
-                  <div id="imageBtnList" class="space-y-3">
-                    <!-- Button 1 -->
-                    <div class="btn-item border border-slate-200 rounded-xl p-3 space-y-2.5 bg-slate-50/30">
-                      <div class="flex items-center justify-between">
-                        <span class="text-[11px] font-semibold text-slate-500">Button 1</span>
-                        <button type="button" class="btn-remove text-slate-400 hover:text-rose-500 transition hidden">
-                          <i class="fa-solid fa-trash-can text-xs"></i>
-                        </button>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-700 mb-1">Button Text</label>
-                        <input type="text" data-field="btnText" placeholder="e.g. Open App" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-700 mb-1">Button Link</label>
-                        <input type="text" data-field="btnLink" placeholder="<?= e(APP_URL) ?>/refer-earn.php" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-700 mb-1">Button Style</label>
-                        <div class="grid grid-cols-3 gap-2">
-                          <label class="flex items-center justify-center cursor-pointer">
-                            <input type="radio" name="imageBtnStyle1" value="primary" checked class="sr-only peer" />
-                            <span class="w-full py-1.5 rounded-lg bg-[#6339f9] text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-[#6339f9] transition">Primary</span>
-                          </label>
-                          <label class="flex items-center justify-center cursor-pointer">
-                            <input type="radio" name="imageBtnStyle1" value="success" class="sr-only peer" />
-                            <span class="w-full py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-emerald-500 transition">Success</span>
-                          </label>
-                          <label class="flex items-center justify-center cursor-pointer">
-                            <input type="radio" name="imageBtnStyle1" value="danger" class="sr-only peer" />
-                            <span class="w-full py-1.5 rounded-lg bg-rose-500 text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-rose-500 transition">Danger</span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <div id="imageBtnList" class="space-y-3"></div>
                   <!-- Add Button -->
                   <button type="button" id="addImageBtn" class="w-full py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 hover:text-[#6339f9] hover:border-[#6339f9] text-xs font-medium flex items-center justify-center gap-2 transition">
                     <i class="fa-solid fa-plus text-xs"></i>
@@ -380,42 +310,7 @@ function broadcast_icon(string $mediaType): array
                     <textarea rows="2" maxlength="1024" data-field="caption" placeholder="Add a caption to your video..." class="w-full text-xs text-slate-800 bg-slate-50/40 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500 focus:bg-white transition resize-none placeholder:text-slate-400"></textarea>
                   </div>
                   <!-- Buttons List -->
-                  <div id="videoBtnList" class="space-y-3">
-                    <!-- Button 1 -->
-                    <div class="btn-item border border-slate-200 rounded-xl p-3 space-y-2.5 bg-slate-50/30">
-                      <div class="flex items-center justify-between">
-                        <span class="text-[11px] font-semibold text-slate-500">Button 1</span>
-                        <button type="button" class="btn-remove text-slate-400 hover:text-rose-500 transition hidden">
-                          <i class="fa-solid fa-trash-can text-xs"></i>
-                        </button>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-700 mb-1">Button Text</label>
-                        <input type="text" data-field="btnText" placeholder="e.g. Watch Now" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-700 mb-1">Button Link</label>
-                        <input type="text" data-field="btnLink" placeholder="<?= e(APP_URL) ?>/refer-earn.php" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-700 mb-1">Button Style</label>
-                        <div class="grid grid-cols-3 gap-2">
-                          <label class="flex items-center justify-center cursor-pointer">
-                            <input type="radio" name="videoBtnStyle1" value="primary" checked class="sr-only peer" />
-                            <span class="w-full py-1.5 rounded-lg bg-[#6339f9] text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-[#6339f9] transition">Primary</span>
-                          </label>
-                          <label class="flex items-center justify-center cursor-pointer">
-                            <input type="radio" name="videoBtnStyle1" value="success" class="sr-only peer" />
-                            <span class="w-full py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-emerald-500 transition">Success</span>
-                          </label>
-                          <label class="flex items-center justify-center cursor-pointer">
-                            <input type="radio" name="videoBtnStyle1" value="danger" class="sr-only peer" />
-                            <span class="w-full py-1.5 rounded-lg bg-rose-500 text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-rose-500 transition">Danger</span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <div id="videoBtnList" class="space-y-3"></div>
                   <!-- Add Button -->
                   <button type="button" id="addVideoBtn" class="w-full py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 hover:text-[#6339f9] hover:border-[#6339f9] text-xs font-medium flex items-center justify-center gap-2 transition">
                     <i class="fa-solid fa-plus text-xs"></i>
@@ -437,42 +332,7 @@ function broadcast_icon(string $mediaType): array
                     <textarea rows="2" maxlength="1024" data-field="caption" placeholder="Add a caption to your file..." class="w-full text-xs text-slate-800 bg-slate-50/40 border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500 focus:bg-white transition resize-none placeholder:text-slate-400"></textarea>
                   </div>
                   <!-- Buttons List -->
-                  <div id="fileBtnList" class="space-y-3">
-                    <!-- Button 1 -->
-                    <div class="btn-item border border-slate-200 rounded-xl p-3 space-y-2.5 bg-slate-50/30">
-                      <div class="flex items-center justify-between">
-                        <span class="text-[11px] font-semibold text-slate-500">Button 1</span>
-                        <button type="button" class="btn-remove text-slate-400 hover:text-rose-500 transition hidden">
-                          <i class="fa-solid fa-trash-can text-xs"></i>
-                        </button>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-700 mb-1">Button Text</label>
-                        <input type="text" data-field="btnText" placeholder="e.g. Download" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-700 mb-1">Button Link</label>
-                        <input type="text" data-field="btnLink" placeholder="<?= e(APP_URL) ?>/refer-earn.php" class="w-full text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 transition placeholder:text-slate-400" />
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-700 mb-1">Button Style</label>
-                        <div class="grid grid-cols-3 gap-2">
-                          <label class="flex items-center justify-center cursor-pointer">
-                            <input type="radio" name="fileBtnStyle1" value="primary" checked class="sr-only peer" />
-                            <span class="w-full py-1.5 rounded-lg bg-[#6339f9] text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-[#6339f9] transition">Primary</span>
-                          </label>
-                          <label class="flex items-center justify-center cursor-pointer">
-                            <input type="radio" name="fileBtnStyle1" value="success" class="sr-only peer" />
-                            <span class="w-full py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-emerald-500 transition">Success</span>
-                          </label>
-                          <label class="flex items-center justify-center cursor-pointer">
-                            <input type="radio" name="fileBtnStyle1" value="danger" class="sr-only peer" />
-                            <span class="w-full py-1.5 rounded-lg bg-rose-500 text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-rose-500 transition">Danger</span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <div id="fileBtnList" class="space-y-3"></div>
                   <!-- Add Button -->
                   <button type="button" id="addFileBtn" class="w-full py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 hover:text-[#6339f9] hover:border-[#6339f9] text-xs font-medium flex items-center justify-center gap-2 transition">
                     <i class="fa-solid fa-plus text-xs"></i>
@@ -758,26 +618,26 @@ Invite your friends and earn 150 T for each successful referral.
       // Multiple buttons for Text tab
       const textBtnList = document.getElementById('textBtnList');
       const addTextBtn = document.getElementById('addTextBtn');
-      let textBtnCount = 1;
       const imageBtnList = document.getElementById('imageBtnList');
       const addImageBtn = document.getElementById('addImageBtn');
-      let imageBtnCount = 1;
       const videoBtnList = document.getElementById('videoBtnList');
       const addVideoBtn = document.getElementById('addVideoBtn');
-      let videoBtnCount = 1;
       const fileBtnList = document.getElementById('fileBtnList');
       const addFileBtn = document.getElementById('addFileBtn');
-      let fileBtnCount = 1;
 
-      function createButtonItem(list, prefix, countRef) {
-        countRef.value++;
-        const n = countRef.value;
+      function createButtonItem(list, prefix) {
+        const n = list.querySelectorAll('.btn-item').length + 1;
         const item = document.createElement('div');
         item.className = 'btn-item border border-slate-200 rounded-xl p-3 space-y-2.5 bg-slate-50/30';
         item.innerHTML = `
                                             
 						<div class="flex items-center justify-between">
-							<span class="text-[11px] font-semibold text-slate-500">Button ${n}</span>
+							<div class="flex items-center gap-2">
+								<button type="button" draggable="true" data-drag-handle aria-label="Drag to reorder button" title="Drag to reorder" class="text-slate-400 hover:text-slate-700 cursor-grab active:cursor-grabbing">
+									<i class="fa-solid fa-grip-vertical text-xs"></i>
+								</button>
+								<span data-button-label class="text-[11px] font-semibold text-slate-500">Button ${n}</span>
+							</div>
 							<button type="button" class="btn-remove text-slate-400 hover:text-rose-500 transition">
 								<i class="fa-solid fa-trash-can text-xs"></i>
 							</button>
@@ -792,10 +652,14 @@ Invite your friends and earn 150 T for each successful referral.
 						</div>
 						<div>
 							<label class="block text-xs font-medium text-slate-700 mb-1">Button Style</label>
-							<div class="grid grid-cols-3 gap-2">
+							<div class="grid grid-cols-4 gap-2">
 								<label class="flex items-center justify-center cursor-pointer">
-									<input type="radio" name="${prefix}${n}" value="primary" checked class="sr-only peer" />
-									<span class="w-full py-1.5 rounded-lg bg-[#6339f9] text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-[#6339f9] transition">Primary</span>
+									<input type="radio" name="${prefix}${n}" value="normal" checked class="sr-only peer" />
+									<span class="w-full py-1.5 rounded-lg bg-slate-500 text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-slate-500 transition">Normal</span>
+								</label>
+								<label class="flex items-center justify-center cursor-pointer">
+									<input type="radio" name="${prefix}${n}" value="primary" class="sr-only peer" />
+									<span class="w-full py-1.5 rounded-lg bg-[#3390ec] text-white text-[11px] font-semibold text-center peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-[#3390ec] transition">Primary</span>
 								</label>
 								<label class="flex items-center justify-center cursor-pointer">
 									<input type="radio" name="${prefix}${n}" value="success" class="sr-only peer" />
@@ -808,46 +672,61 @@ Invite your friends and earn 150 T for each successful referral.
 							</div>
 						</div>`;
         list.appendChild(item);
-        updateRemoveButtons(list);
         renderPreview();
       }
 
-      function updateRemoveButtons(list) {
-        const items = list.querySelectorAll('.btn-item');
-        items.forEach((item) => {
-          const removeBtn = item.querySelector('.btn-remove');
-          removeBtn.classList.toggle('hidden', items.length === 1);
+      function renumberButtonItems(list) {
+        list.querySelectorAll('.btn-item').forEach((item, index) => {
+          const label = item.querySelector('[data-button-label]');
+          if (label) label.textContent = 'Button ' + (index + 1);
         });
       }
 
-      function setupButtonList(list, addBtnEl, prefix, countRef) {
-        addBtnEl.addEventListener('click', () => createButtonItem(list, prefix, countRef));
+      function setupButtonList(list, addBtnEl, prefix) {
+        let draggedItem = null;
+
+        addBtnEl.addEventListener('click', () => createButtonItem(list, prefix));
         list.addEventListener('click', (e) => {
           const removeBtn = e.target.closest('.btn-remove');
           if (!removeBtn) return;
           const item = removeBtn.closest('.btn-item');
           item.remove();
-          // Renumber remaining buttons
-          list.querySelectorAll('.btn-item').forEach((el, idx) => {
-            el.querySelector('span').textContent = 'Button ' + (idx + 1);
-          });
-          updateRemoveButtons(list);
+          renumberButtonItems(list);
           renderPreview();
         });
-        updateRemoveButtons(list);
+
+        list.addEventListener('dragstart', (e) => {
+          const handle = e.target.closest('[data-drag-handle]');
+          if (!handle) return;
+          draggedItem = handle.closest('.btn-item');
+          if (!draggedItem) return;
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', 'button');
+          }
+          draggedItem.classList.add('opacity-50');
+        });
+        list.addEventListener('dragover', (e) => {
+          if (!draggedItem) return;
+          const targetItem = e.target.closest('.btn-item');
+          if (!targetItem || targetItem === draggedItem) return;
+          e.preventDefault();
+          const bounds = targetItem.getBoundingClientRect();
+          const insertAfter = e.clientY >= bounds.top + bounds.height / 2;
+          list.insertBefore(draggedItem, insertAfter ? targetItem.nextElementSibling : targetItem);
+        });
+        list.addEventListener('dragend', () => {
+          if (!draggedItem) return;
+          draggedItem.classList.remove('opacity-50');
+          draggedItem = null;
+          renumberButtonItems(list);
+          renderPreview();
+        });
       }
-      setupButtonList(textBtnList, addTextBtn, 'textBtnStyle', {
-        value: textBtnCount
-      });
-      setupButtonList(imageBtnList, addImageBtn, 'imageBtnStyle', {
-        value: imageBtnCount
-      });
-      setupButtonList(videoBtnList, addVideoBtn, 'videoBtnStyle', {
-        value: videoBtnCount
-      });
-      setupButtonList(fileBtnList, addFileBtn, 'fileBtnStyle', {
-        value: fileBtnCount
-      });
+      setupButtonList(textBtnList, addTextBtn, 'textBtnStyle');
+      setupButtonList(imageBtnList, addImageBtn, 'imageBtnStyle');
+      setupButtonList(videoBtnList, addVideoBtn, 'videoBtnStyle');
+      setupButtonList(fileBtnList, addFileBtn, 'fileBtnStyle');
 
       // ---- Live message preview ----
       const previewText = document.getElementById('previewText');
@@ -862,9 +741,10 @@ Invite your friends and earn 150 T for each successful referral.
       const textCharCount = document.getElementById('textCharCount');
 
       const STYLE_COLORS = {
-        primary: 'rgba(99, 57, 249, 0.85)',
-        success: 'rgba(16, 185, 129, 0.85)',
-        danger: 'rgba(244, 63, 94, 0.85)'
+        normal: 'rgba(100, 116, 139, 0.9)',
+        primary: 'rgba(51, 144, 236, 0.9)',
+        success: 'rgba(49, 162, 76, 0.9)',
+        danger: 'rgba(229, 57, 53, 0.9)'
       };
 
       const mediaState = { image: null, video: null, file: null };
@@ -893,7 +773,7 @@ Invite your friends and earn 150 T for each successful referral.
           .map(item => ({
             text: item.querySelector('[data-field="btnText"]').value.trim(),
             link: item.querySelector('[data-field="btnLink"]').value.trim(),
-            style: item.querySelector('input[type="radio"]:checked')?.value || 'primary'
+            style: item.querySelector('input[type="radio"]:checked')?.value || 'normal'
           }))
           .filter(b => b.text);
       }
@@ -1215,9 +1095,9 @@ Invite your friends and earn 150 T for each successful referral.
         messageTextInput.value = text;
         buttonsInput.value = JSON.stringify(buttons);
 
-        if (text.trim() === '' && buttons.length === 0) {
+        if (activeTab === 'text' && text.trim() === '') {
           e.preventDefault();
-          showToast('Add a message or at least one button before sending.', true);
+          showToast('Add a message before sending a text broadcast.', true);
           return;
         }
 
@@ -1239,6 +1119,9 @@ Invite your friends and earn 150 T for each successful referral.
       document.getElementById('clearBroadcast').addEventListener('click', () => {
         setTimeout(() => {
           textCharCount.textContent = '0/4096';
+          [textBtnList, imageBtnList, videoBtnList, fileBtnList].forEach((list) => {
+            list.innerHTML = '';
+          });
           Object.keys(mediaState).forEach((tab) => {
             if (mediaState[tab] && mediaState[tab].url) URL.revokeObjectURL(mediaState[tab].url);
             mediaState[tab] = null;

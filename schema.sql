@@ -246,7 +246,7 @@ CREATE TABLE `broadcast_buttons` (
   `broadcast_id`  BIGINT UNSIGNED NOT NULL,
   `label`         VARCHAR(64)     NOT NULL COMMENT 'Button text, e.g. "Open App"',
   `url`           VARCHAR(500)    NOT NULL,
-  `style`         ENUM('primary','success','danger') NOT NULL DEFAULT 'primary',
+  `style`         ENUM('normal','primary','success','danger') NOT NULL DEFAULT 'normal',
   `position`      TINYINT UNSIGNED NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_broadcast_buttons_pos` (`broadcast_id`, `position`),

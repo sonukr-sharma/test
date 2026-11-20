@@ -353,6 +353,14 @@ closes the browser tab, provided the PHP/web-server process remains running.
 
 Users with `status = 'blocked'` are always excluded.
 
+### Inline button styles
+
+The composer supports **Normal**, **Primary**, **Success**, and **Danger**.
+Normal omits Telegram's optional button `style`; the other options send
+Telegram's corresponding style values. For existing databases, apply
+`migrations/20261120_broadcast_button_normal_style.sql` once. Fresh installs
+receive the updated enum from `schema.sql`.
+
 ### What happens during a send
 
 1. The broadcast row is committed first, so a delivery failure never loses the draft.
@@ -376,6 +384,9 @@ The admin sees a toast with the outcome, e.g.
 
 ### Media and formatting
 
+- Image, video, and document captions are optional; the uploaded media can be
+  sent without a caption or inline buttons. Text-only broadcasts still require
+  a message.
 - Images (JPG, PNG, GIF, WebP) up to 5 MB, MPEG-4 video (MP4) up to 50 MB, and
   documents (PDF, DOC, DOCX, XLS, XLSX, ZIP) up to 20 MB.
 - Non-GIF photos must have width plus height at most 10,000 and an aspect ratio
