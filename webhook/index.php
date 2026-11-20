@@ -227,13 +227,64 @@ if ($text !== '' && str_starts_with($text, '/')) {
     $command = explode('@', $command)[0];
 }
 
-// Callback queries (inline button taps) — acknowledge and stop.
+// Callback queries handle manual withdrawal results and channel verification.
 if (isset($update['callback_query'])) {
     $cq       = $update['callback_query'];
     $cqData   = (string) ($cq['data'] ?? '');
     $cqFrom   = is_array($cq['from'] ?? null) ? $cq['from'] : null;
     $cqTid    = is_array($cqFrom) && isset($cqFrom['id']) ? (int) $cqFrom['id'] : 0;
     $cqChatId = is_array($cq['message'] ?? null) ? ($cq['message']['chat']['id'] ?? null) : null;
+
+    if (preg_match('/^withdrawal:(paid|failed):([1-9][0-9]*)$/', $cqData, $withdrawalAction) === 1) {
+        $action = $withdrawalAction[1];
+        $withdrawalId = (int) $withdrawalAction[2];
+        $authorizedIds = withdrawal_action_admin_ids();
+
+        if ($cqTid <= 0 || !in_array((string) $cqTid, $authorizedIds, true)) {
+            telegram_api('answerCallbackQuery', [
+                'callback_query_id' => $cq['id'] ?? '',
+                'text' => 'You are not authorized to update withdrawals.',
+                'show_alert' => 'true',
+            ]);
+            log_update($update, $cqTid, 'callback_query', 'withdrawal_' . $action, false, 'Unauthorized withdrawal action');
+            webhook_reply(['ok' => true]);
+        }
+
+        $result = process_telegram_manual_withdrawal_action($withdrawalId, $action, $cqTid);
+        telegram_api('answerCallbackQuery', [
+            'callback_query_id' => $cq['id'] ?? '',
+            'text' => $result['message'],
+            'show_alert' => $result['ok'] ? 'false' : 'true',
+        ]);
+
+        if ($result['ok'] && is_array($cq['message'] ?? null) && $cqChatId !== null) {
+            $message = $cq['message'];
+            $messageId = $message['message_id'] ?? null;
+            $messageText = (string) ($message['text'] ?? '');
+            if ($messageId !== null && $messageText !== '') {
+                $statusLine = $result['status'] === 'completed'
+                    ? '✅ Status: Marked as Paid'
+                    : '❌ Status: Rejected & Refunded';
+                $editParams = [
+                    'chat_id' => $cqChatId,
+                    'message_id' => $messageId,
+                    'text' => $messageText . "\n\n" . $statusLine,
+                    'reply_markup' => json_encode(['inline_keyboard' => []]),
+                ];
+                if (is_array($message['entities'] ?? null) && $message['entities'] !== []) {
+                    $editParams['entities'] = json_encode($message['entities']);
+                }
+
+                $editResponse = telegram_api('editMessageText', $editParams);
+                if (($editResponse['ok'] ?? false) !== true) {
+                    error_log('Telegram withdrawal message update failed: ' . (string) ($editResponse['description'] ?? $editResponse['error'] ?? 'Unknown Telegram API error.'));
+                }
+            }
+        }
+
+        log_update($update, $cqTid, 'callback_query', 'withdrawal_' . $action, $result['ok'], $result['ok'] ? null : $result['message']);
+        webhook_reply(['ok' => true]);
+    }
 
     // "I've joined — Verify" button: re-check membership and reply with the
     // result. If the user now passes the gate, unlock the app.

@@ -204,12 +204,11 @@ In Auto withdrawal mode, `withdrawal_api_url` is the payout gateway used for
 every request. Configure it before switching to Auto — see
 [Withdrawal modes](#9-withdrawal-modes-and-amounts) below.
 
-Then, in @BotFather:
-
-1. `/mybots` → your bot → **Bot Settings → Menu Button → Configure menu button**
-   → set the URL to `https://yourdomain.com`.
-2. `/mybots` → your bot → **Bot Settings → Domain** → add your domain
-   (required for Web Apps to open).
+In @BotFather, open `/mybots` → your bot → **Bot Settings → Menu Button** to
+configure the Mini App button and its URL. Add your public domain under
+**Bot Settings → Domain** if Telegram asks for it. Saving a bot token in the
+Bot & Links settings card registers the webhook; it does not configure the
+Telegram Menu button.
 
 ---
 
@@ -273,8 +272,15 @@ Referral requirements continue to apply in both modes.
 
 - **Manual:** requests remain pending for manual payment. The bot sends each
   request to the configured Telegram chat IDs; the bot must be able to message
-  each user, group, or channel. After paying, an admin marks the request as
-  paid in **Admin → Withdrawals**. Rejecting a request refunds the held balance.
+  each user, group, or channel. Add trusted Telegram user IDs to the authorized
+  admin list to authorize the notification's green **Mark as Paid** and
+  red **Reject & Refund** buttons. Both buttons appear on every alert. Personal
+  user IDs configured as private-chat destinations are authorized automatically;
+  for group or channel notifications, add trusted personal user IDs to the
+  authorized admin list. Group and channel IDs cannot authorize actions. A
+  successful action completes the withdrawal; a failed action rejects it and
+  refunds the held balance. The web admin withdrawal dashboard remains
+  available as well.
 - **Auto:** every valid request is sent immediately to `withdrawal_api_url`.
   There is no approval step. A successful gateway response completes the
   withdrawal; a failed or unavailable gateway leaves it pending for follow-up.

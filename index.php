@@ -151,7 +151,7 @@ $flash = flash_get();
             <i class="fa-solid fa-circle-info text-[#5925dc] text-sm"></i>
             <span class="text-slate-600 font-medium">Withdraw ₹10, ₹50, or ₹100</span>
           </div>
-          <a href="#" class="text-[#5925dc] font-bold flex items-center gap-1 hover:underline">
+          <a href="withdraw.php" class="text-[#5925dc] font-bold flex items-center gap-1 hover:underline">
             <span>How it works?</span>
             <i class="fa-solid fa-chevron-right text-[10px]"></i>
           </a>

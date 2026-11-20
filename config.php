@@ -290,6 +290,7 @@ function default_settings(): array
         // Withdrawal
         'withdrawal_mode'              => 'manual',
         'withdrawal_manual_chat_ids'   => '',
+        'withdrawal_action_admin_ids' => '',
         // Optional automatic payout gateway; blank means "not configured".
         'withdrawal_api_url'           => '',
         'coin_to_inr_rate'             => 0.10,
@@ -1126,6 +1127,30 @@ function withdrawal_manual_chat_ids(): array
 }
 
 /**
+ * Telegram user IDs allowed to confirm or fail manual withdrawal payouts.
+ *
+ * @return list<string>
+ */
+function withdrawal_action_admin_ids(): array
+{
+    $raw = (string) setting('withdrawal_action_admin_ids', '');
+    $parts = array_merge(
+        preg_split('/[\r\n,]+/', $raw) ?: [],
+        withdrawal_manual_chat_ids()
+    );
+    $userIds = [];
+
+    foreach ($parts as $part) {
+        $userId = trim($part);
+        if (preg_match('/^[1-9][0-9]{0,15}$/', $userId) === 1 && !in_array($userId, $userIds, true)) {
+            $userIds[] = $userId;
+        }
+    }
+
+    return $userIds;
+}
+
+/**
  * Notify configured Telegram chats about a newly submitted manual withdrawal.
  *
  * @param array<string, mixed> $user
@@ -1146,17 +1171,35 @@ function notify_manual_withdrawal(
     $username = trim((string) ($user['username'] ?? ''));
     $telegramId = trim((string) ($user['telegram_id'] ?? ''));
     $text = implode("\n", [
-        '<b>Manual withdrawal request #' . $withdrawalId . '</b>',
-        'User: ' . e($username !== '' ? '@' . $username : 'Unknown'),
-        'Telegram ID: ' . e($telegramId !== '' ? $telegramId : 'Unavailable'),
-        'Amount: ' . e(inr_format($amountInr)) . ' (' . e(t_format($amountT)) . ')',
-        'UPI ID: ' . e($upiId),
+        '💸 <b>MANUAL WITHDRAWAL #' . $withdrawalId . '</b>',
+        '━━━━━━━━━━━━━━━━━━━━',
+        '👤 <b>User:</b> ' . e($username !== '' ? '@' . $username : 'Unknown'),
+        '🆔 <b>Telegram ID:</b> <code>' . e($telegramId !== '' ? $telegramId : 'Unavailable') . '</code>',
+        '💰 <b>Amount:</b> ' . e(inr_format($amountInr)) . ' (' . e(t_format($amountT)) . ')',
+        '🏦 <b>UPI ID:</b> <code>' . e($upiId) . '</code>',
+        '━━━━━━━━━━━━━━━━━━━━',
+        '<i>Manual withdrawal request received.</i>',
     ]);
+
+    $replyMarkup = [
+        'inline_keyboard' => [[
+            [
+                'text' => '✅ Mark as Paid',
+                'style' => 'success',
+                'callback_data' => 'withdrawal:paid:' . $withdrawalId,
+            ],
+            [
+                'text' => '❌ Reject & Refund',
+                'style' => 'danger',
+                'callback_data' => 'withdrawal:failed:' . $withdrawalId,
+            ],
+        ]],
+    ];
 
     $sent = 0;
     $failures = [];
     foreach ($chatIds as $chatId) {
-        $response = telegram_send_message($chatId, $text);
+        $response = telegram_send_message($chatId, $text, $replyMarkup);
         if (($response['ok'] ?? false) === true) {
             $sent++;
             continue;
@@ -1168,6 +1211,148 @@ function notify_manual_withdrawal(
     }
 
     return ['configured' => true, 'sent' => $sent, 'failures' => $failures];
+}
+
+/**
+ * Finalize a manual withdrawal from an authorized Telegram callback.
+ *
+ * A failed payout is rejected and refunded; a successful payout is completed.
+ *
+ * @return array{ok: bool, status: string, message: string}
+ */
+function process_telegram_manual_withdrawal_action(int $withdrawalId, string $action, int $telegramUserId): array
+{
+    if ($withdrawalId <= 0 || !in_array($action, ['paid', 'failed'], true) || $telegramUserId <= 0) {
+        return ['ok' => false, 'status' => 'invalid', 'message' => 'Invalid withdrawal action.'];
+    }
+
+    $pdo = db();
+    try {
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare(
+            'SELECT `id`, `user_id`, `amount_t`, `status`
+               FROM `withdrawals`
+              WHERE `id` = :id
+              FOR UPDATE'
+        );
+        $stmt->execute([':id' => $withdrawalId]);
+        $withdrawal = $stmt->fetch();
+
+        if ($withdrawal === false) {
+            $pdo->rollBack();
+            return ['ok' => false, 'status' => 'not_found', 'message' => 'Withdrawal not found.'];
+        }
+
+        $fromStatus = (string) $withdrawal['status'];
+        if (!in_array($fromStatus, ['pending', 'processing'], true)) {
+            $pdo->rollBack();
+            return [
+                'ok' => false,
+                'status' => $fromStatus,
+                'message' => 'This withdrawal is already ' . $fromStatus . '.',
+            ];
+        }
+
+        $newStatus = $action === 'paid' ? 'completed' : 'rejected';
+        $statusNote = $action === 'paid'
+            ? 'Marked paid by authorized Telegram user ' . $telegramUserId . '.'
+            : 'Marked failed and refunded by authorized Telegram user ' . $telegramUserId . '.';
+
+        $update = $pdo->prepare(
+            'UPDATE `withdrawals`
+                SET `status` = :status,
+                    `processed_at` = NOW(),
+                    `processed_by` = NULL,
+                    `rejection_reason` = :reason
+              WHERE `id` = :id'
+        );
+        $update->execute([
+            ':status' => $newStatus,
+            ':reason' => $action === 'failed' ? 'Manual payout failed; amount refunded.' : null,
+            ':id' => $withdrawalId,
+        ]);
+
+        if ($action === 'failed') {
+            $refund = $pdo->prepare(
+                'UPDATE `users`
+                    SET `balance_t` = `balance_t` + :amount
+                  WHERE `id` = :user'
+            );
+            $refund->execute([
+                ':amount' => $withdrawal['amount_t'],
+                ':user' => $withdrawal['user_id'],
+            ]);
+
+            $balanceStmt = $pdo->prepare('SELECT `balance_t` FROM `users` WHERE `id` = :user');
+            $balanceStmt->execute([':user' => $withdrawal['user_id']]);
+            $balanceAfter = (float) $balanceStmt->fetchColumn();
+
+            $ledger = $pdo->prepare(
+                'INSERT INTO `wallet_transactions`
+                     (`user_id`, `type`, `direction`, `amount_t`, `balance_after_t`,
+                      `reference_type`, `reference_id`, `description`)
+                 VALUES (:user, :type, :direction, :amount, :balance,
+                         :ref_type, :ref_id, :description)'
+            );
+            $ledger->execute([
+                ':user' => $withdrawal['user_id'],
+                ':type' => 'withdrawal_refund',
+                ':direction' => 'credit',
+                ':amount' => $withdrawal['amount_t'],
+                ':balance' => $balanceAfter,
+                ':ref_type' => 'withdrawal',
+                ':ref_id' => $withdrawalId,
+                ':description' => 'Withdrawal #' . $withdrawalId . ' failed — amount refunded',
+            ]);
+        }
+
+        $history = $pdo->prepare(
+            'INSERT INTO `withdrawal_status_history`
+                 (`withdrawal_id`, `from_status`, `to_status`, `note`, `admin_id`)
+             VALUES (:wid, :from, :to, :note, NULL)'
+        );
+        $history->execute([
+            ':wid' => $withdrawalId,
+            ':from' => $fromStatus,
+            ':to' => $newStatus,
+            ':note' => $statusNote,
+        ]);
+
+        $audit = $pdo->prepare(
+            'INSERT INTO `audit_logs` (`admin_id`, `action`, `entity_type`, `entity_id`, `meta`, `ip_address`)
+             VALUES (NULL, :action, :entity_type, :entity_id, :meta, :ip)'
+        );
+        $audit->execute([
+            ':action' => $action === 'paid' ? 'withdrawal.telegram_paid' : 'withdrawal.telegram_failed',
+            ':entity_type' => 'withdrawal',
+            ':entity_id' => $withdrawalId,
+            ':meta' => json_encode([
+                'from' => $fromStatus,
+                'to' => $newStatus,
+                'amount_t' => $withdrawal['amount_t'],
+                'telegram_user_id' => $telegramUserId,
+            ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            ':ip' => $_SERVER['REMOTE_ADDR'] ?? null,
+        ]);
+
+        $pdo->commit();
+
+        return [
+            'ok' => true,
+            'status' => $newStatus,
+            'message' => $action === 'paid'
+                ? 'Withdrawal #' . $withdrawalId . ' marked as paid.'
+                : 'Withdrawal #' . $withdrawalId . ' marked failed and refunded.',
+        ];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        error_log('Telegram withdrawal callback failed: ' . $e->getMessage());
+        return ['ok' => false, 'status' => 'error', 'message' => 'Could not update this withdrawal.'];
+    }
 }
 
 /**

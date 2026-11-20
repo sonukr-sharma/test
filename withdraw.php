@@ -5,11 +5,11 @@ require_once __DIR__ . '/config.php';
 
 $user = require_onboarded_user();
 
-$withdrawalsEnabled = (bool) setting('withdrawals_enabled', true);
 $minReferrals       = (int) setting('min_referrals_withdrawal', 5);
 $minReferralsSubseq = (int) setting('min_referrals_subsequent_withdrawal', 20);
 $processingHours    = (int) setting('withdrawal_processing_hours', 24);
 $coinToInrRate      = (float) setting('coin_to_inr_rate', 0.10);
+$autoPayoutEnabled  = setting('withdrawal_mode', 'manual') === 'auto' && withdrawal_api_url() !== '';
 $balanceT           = (float) $user['balance_t'];
 $referralCount      = (int) $user['referral_count'];
 
@@ -52,16 +52,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!csrf_verify($_POST['csrf_token'] ?? null)) {
         $formError = 'Your session expired. Please try again.';
-    } elseif (!$withdrawalsEnabled) {
-        $formError = 'Withdrawals are temporarily disabled.';
     } elseif ($referralCount < $referralsRequired) {
         $formError = sprintf('You need at least %d referrals to withdraw.', $referralsRequired);
     } elseif ($submittedAmountInr === false || !in_array($submittedAmountInr, $withdrawalOptionsInr, true)) {
         $formError = 'Choose a withdrawal amount of ₹10, ₹50, or ₹100.';
     } elseif ($coinToInrRate <= 0 || !is_finite($coinToInrRate)) {
         $formError = 'Withdrawals are unavailable because the conversion rate is invalid.';
-    } elseif (setting('withdrawal_mode', 'manual') === 'auto' && withdrawal_api_url() === '') {
-        $formError = 'Auto withdrawals are unavailable because the payout gateway is not configured.';
     } elseif (!array_key_exists($submittedAmountInr, $withdrawalAmountsT)) {
         $formError = 'This withdrawal amount cannot be represented at the current conversion rate.';
     } elseif (preg_match('/^[\w.\-]{2,}@[a-zA-Z]{2,}$/', $formUpi) !== 1) {
@@ -125,9 +121,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // External notifications and payouts happen after the transaction
             // commits so slow network calls never hold the wallet row lock.
-            if (setting('withdrawal_mode', 'manual') === 'auto') {
+            if ($autoPayoutEnabled) {
                 $payout = process_withdrawal_payout($withdrawalId, $amountT, $formUpi);
-                flash_set($payout['ok'] ? 'success' : 'warning', $payout['message']);
+                flash_set(
+                    $payout['ok'] ? 'success' : 'warning',
+                    $payout['ok']
+                        ? 'Your withdrawal of ' . inr_format($amountInr) . ' has been sent. It should be reflected within ' . $processingHours . ' hours.'
+                        : 'Your withdrawal request is still pending. Please contact support if it is not reflected within ' . $processingHours . ' hours.'
+                );
             } else {
                 $notification = notify_manual_withdrawal(
                     $user,
@@ -139,18 +140,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$notification['configured']) {
                     flash_set(
                         'warning',
-                        'Manual withdrawal request submitted, but no Telegram notification chats are configured. Please contact the administrator.'
+                        'Your withdrawal request was received, but support could not be notified. Please contact support to ensure it is processed.'
                     );
                 } elseif ($notification['failures'] !== []) {
                     flash_set(
                         'warning',
-                        'Manual withdrawal request submitted, but Telegram could not notify every configured chat. Please contact the administrator.'
+                        'Your withdrawal request was sent, but not all support contacts could be notified. Please contact support if it is not reflected within ' . $processingHours . ' hours.'
                     );
                 } else {
                     flash_set(
                         'success',
-                        'Manual withdrawal request of ' . inr_format($amountInr) . ' (' . t_format($amountT)
-                            . ') submitted. The payment team has been notified and will process it within '
+                        'Your withdrawal of ' . inr_format($amountInr) . ' has been sent. It should be reflected within '
                             . $processingHours . ' hours.'
                     );
                 }
@@ -298,18 +298,8 @@ try {
       <div class="bg-white rounded-3xl p-4 card-shadow">
         <h3 class="font-extrabold text-sm text-slate-900 mb-3">Withdraw Amount</h3>
 
-        <?php if ($formError !== null): ?>
-          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-            <?= e($formError) ?>
-          </div>
-        <?php endif; ?>
-
-        <?php if (!$withdrawalsEnabled): ?>
-          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-            Withdrawals are temporarily disabled. Please check back later.
-          </div>
-        <?php elseif ($referralCount < $referralsRequired): ?>
-          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+        <?php if ($referralCount < $referralsRequired): ?>
+          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-amber-600 text-white border border-amber-600">
             You need at least <?= e((string) $referralsRequired) ?> referrals to withdraw. You currently have <?= e((string) $referralCount) ?>.
           </div>
         <?php elseif ($coinToInrRate <= 0 || !is_finite($coinToInrRate)): ?>
@@ -323,14 +313,6 @@ try {
             <?php else: ?>
               The current conversion rate cannot represent the available withdrawal amounts. Please contact support.
             <?php endif; ?>
-          </div>
-        <?php elseif (setting('withdrawal_mode', 'manual') === 'auto'): ?>
-          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            Auto withdrawal is enabled. Requests are sent to the configured payment gateway without an approval step.
-          </div>
-        <?php else: ?>
-          <div class="mb-3 rounded-xl px-3 py-2.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-            Manual payment is enabled. Your request will be sent to the payment team for processing.
           </div>
         <?php endif; ?>
 
@@ -374,13 +356,6 @@ try {
                   </span>
                 </button>
               <?php endforeach; ?>
-            </div>
-            <div class="text-[10px] font-semibold text-[#5925dc] mt-2" id="amountInrHint">
-              <?php if (isset($withdrawalAmountsT[$formAmountInr])): ?>
-                <?= e(inr_format($formAmountInr)) ?> deducts <?= e(t_format($formAmountT)) ?> from your T wallet.
-              <?php else: ?>
-                This amount is unavailable at the current conversion rate.
-              <?php endif; ?>
             </div>
           </div>
 
@@ -515,17 +490,6 @@ try {
             option.setAttribute('aria-pressed', isActive ? 'true' : 'false');
           });
 
-          const hint = document.getElementById('amountInrHint');
-          const amountT = AMOUNT_T_BY_INR[String(amountInr)];
-          if (hint) {
-            hint.textContent = amountT === undefined
-              ? 'This amount is unavailable at the current conversion rate.'
-              : 'You will receive ₹ ' + amountInr.toLocaleString('en-IN') + ' and ' +
-                amountT.toLocaleString('en-IN', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2
-                }) + ' T will be deducted from your wallet.';
-          }
         }
 
         document.querySelectorAll('.amount-option').forEach(function (option) {
@@ -576,8 +540,11 @@ try {
         }
 
         const serverFlash = <?= json_encode($flash, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+        const formError = <?= json_encode($formError, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
-        if (serverFlash && serverFlash.message) {
+        if (formError) {
+          showToast(formError, true);
+        } else if (serverFlash && serverFlash.message) {
           showToast(serverFlash.message, serverFlash.type !== 'success');
         }
     </script>
